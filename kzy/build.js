@@ -13638,6 +13638,7 @@ var require_kdb=[  //list of ydb for running this application
   {filename:"glyphwiki.kdb"  , url:"http://ya.ksana.tw/kdb/glyphwiki.kdb" , desc:"Glyphiwiki"}  
  ,{filename:"chise.kdb"  , url:"http://ya.ksana.tw/kdb/chise.kdb" , desc:"Chise"}
 ];    
+
 var main = React.createClass({displayName: 'main',
   getInitialState: function() {
     return {res:null,db:null,glyphs:[],glyphwiki:null,bigglyph:0};
@@ -13697,13 +13698,23 @@ var main = React.createClass({displayName: 'main',
       code:this.state.bigglyph, size:"512"})
     }
   },
+
   renderGlyph:function(code) {
     if (!this.state.glyphwiki) return null;
-    var unicode="u"+code.toString(16);
-
-    return React.DOM.button( {title:unicode,  onClick:this.showBigGlyph, 'data-code':unicode}, 
-    kageglyph( {db:this.state.glyphwiki,
-      code:unicode, size:"48"}))
+    var db=this.state.glyphwiki;
+    var unicode=code.toString(16);
+    var kagecode="u"+code.toString(16);
+    var glyph=function() {
+        if (parseInt(code)<=0x2A6DF) {
+          return chise.api.ucs2string(code);
+        } else {
+          return kageglyph( {db:db, code:"u"+unicode, size:"48"})
+        }
+    }
+    return React.DOM.button( {className:"candidate", title:unicode, 
+     onClick:this.showBigGlyph, 'data-code':"u"+unicode}, 
+    glyph()
+    )
   },
   render: function() {  //main render routine
     if (!this.state.quota) { // install required db
@@ -14050,7 +14061,16 @@ var parseIDS=function(ids) {
 	}
 	return res;
 }
-module.exports={parseIDS:parseIDS};
+var ucs2string = function (unicode) { //unicode ¤º½XÂà ¦r¦ê¡A§textension B ±¡ªp
+  if (unicode >= 0x10000 && unicode <= 0x10FFFF) {
+    var hi = Math.floor((unicode - 0x10000) / 0x400) + 0xD800;
+    var lo = ((unicode - 0x10000) % 0x400) + 0xDC00;
+    return String.fromCharCode(hi) + String.fromCharCode(lo);
+  } else {
+    return String.fromCharCode(unicode);
+  }
+};
+module.exports={parseIDS:parseIDS, ucs2string:ucs2string};
 });
 require.register("kzy-chise/load.js", function(exports, require, module){
 var api=require("./api");

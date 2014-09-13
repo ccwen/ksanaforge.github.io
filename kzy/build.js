@@ -13658,7 +13658,7 @@ var main = React.createClass({displayName: 'main',
     var tofind=this.refs.tofind.getDOMNode().value;
     chise.load(tofind,function(partindex){
       var res=glypheme.search(partindex,tofind);
-      if (res.length>100) res.length=100;
+      if (res.length>300) res.length=300;
       this.setState({glyphs:res});
     },this);
   }, 

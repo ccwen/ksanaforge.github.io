@@ -13701,11 +13701,14 @@ var main = React.createClass({displayName: 'main',
 
   renderGlyph:function(code) {
     if (!this.state.glyphwiki) return null;
+    code=parseInt(code);
     var db=this.state.glyphwiki;
     var unicode=code.toString(16);
     var kagecode="u"+code.toString(16);
     var glyph=function() {
-        if (parseInt(code)<=0x2A6DF) {
+        var rangestart=0x4e00,rangeend=0x20000;
+        //var range=0x2A6DF; //extension C start
+        if (code>=rangestart && code<rangeend) {
           return chise.api.ucs2string(code);
         } else {
           return kageglyph( {db:db, code:"u"+unicode, size:"48"})
@@ -13733,13 +13736,13 @@ var main = React.createClass({displayName: 'main',
       if (this.refs.tofind) this.refs.tofind.getDOMNode().focus();
   },
   componentDidMount:function() {
-    this.focus();
+    //this.focus();
     kde.open("glyphwiki",function(db){
       this.setState({glyphwiki:db});
     },this);
   },
   componentDidUpdate:function() {
-    this.focus();
+    //this.focus();
   } 
 });
 var resultlist=React.createClass({displayName: 'resultlist',  //should search result

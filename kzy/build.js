@@ -13692,10 +13692,11 @@ var main = React.createClass({displayName: 'main',
 
     this.setState({bigglyph:code});
   },
-  renderBigGlyph:function() {
+  renderBigGlyph:function() { 
     if (this.state.bigglyph) {
-      return kageglyph( {db:this.state.glyphwiki,
-      code:this.state.bigglyph, size:"512"})
+      return React.DOM.div(null, React.DOM.span( {className:"unicode"}, this.state.bigglyph.toString(16)),React.DOM.br(null),
+      kageglyph( {db:this.state.glyphwiki,
+      code:this.state.bigglyph, size:"512"}))
     }
   },
 

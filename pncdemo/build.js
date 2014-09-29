@@ -14998,7 +14998,7 @@ var markups=[
   ,{caption:"Footnote", type:"footnote",dialog:Require("markfootnote"),editable:true}  //single view dialog markup
   ,{caption:"Footnote2", type:"footnote2",dialog:Require("markfootnote"),editable:true}  //single view dialog markup
   ,{caption:"Correspondance",type:"correspond",dialog:Require("markcorrespond")} //dual view markup
-  ,{caption:"Intertext",type:"intertext",dialog:Require("markintertext")} //dual view dialog markup
+  ,{caption:"Intertext",type:"intertext",dialog:Require("markintertext"),editable:true} //dual view dialog markup
 ];
 
 var markuppanel = React.createClass({displayName: 'markuppanel',
@@ -15234,7 +15234,7 @@ var markintertext = React.createClass({displayName: 'markintertext',
   },
   loadMarkup:function(markup) {
     this.editing=markup;
-    this.refs.content.getDOMNode().value=markup[3].desc;
+    this.refs.content.getDOMNode().value=markup[3].content;
     this.refs.linktype.getDOMNode().value=markup[3].linktype;
   },
   packMarkup:function(opts) {

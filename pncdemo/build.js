@@ -13901,7 +13901,7 @@ module.exports=htmlfs;
 });
 require.register("ksanaforge-stackview/index.js", function(exports, require, module){
 /** @jsx React.DOM */
-Require("splitter");
+//Require("splitter");
 
 var dummyview = React.createClass({displayName: 'dummyview',
   render:function() {
@@ -13913,6 +13913,7 @@ var stackview = React.createClass({displayName: 'stackview',
     this.start=0;
     return {bar: "world",cur:0};//403
   },
+  /*
   createSplitter:function() {
     var mainheight=$(this.getDOMNode()).height();
     var mainwidth=$(this.getDOMNode()).width();
@@ -13929,11 +13930,12 @@ var stackview = React.createClass({displayName: 'stackview',
       );      
     }
   },
+  */
   componentWillUpdate:function() {
     this.start=0;
   },
   componentDidMount:function() {
-    setTimeout(this.createSplitter,100);
+    //setTimeout(this.createSplitter,100);
   },
   componentDidUpdate:function() {
     
@@ -13957,17 +13959,24 @@ var stackview = React.createClass({displayName: 'stackview',
       view: dummyview
     }
   },
-  renderView:function(v) {
-    return this.props.view({name:v.name,extra:this.props.extra(v.name),action:this.action,text:v.content});
+  renderView:function(v) { 
+    return React.DOM.div( {className:"viewdiv"}, 
+      this.props.view({name:v.name,extra:this.props.extra(v.name),action:this.action,text:v.content}),
+      React.DOM.hr(null)
+    )
     //return <div className="splitterPane" dangerouslySetInnerHTML={{__html:v.content}}></div>
   },
   createNestedView:function() {
-    if (this.start>=this.props.views.length) return null;
+    /*
+    if (!this.props.views || this.start>=this.props.views.length) return null;
     return React.DOM.div(
       {ref:"v"+this.start}, 
       this.renderView(this.props.views[this.start++]),
       this.createNestedView() 
-    );       
+    );
+*/
+    if (!this.props.views) return;
+    return this.props.views.map(this.renderView);
   },  
   render: function() {
     return React.DOM.div( {className:"stackview"}, 
@@ -14301,7 +14310,6 @@ var textview=Require("textview");
 var controlpanel=Require("controlpanel");
 var markuppanel=Require("markuppanel");
 var hoverMenu=Require("hovermenu");
-var testdata=require('./testdata');
 var selections=require("./selections");
 var persistent=require("./persistent");
 
@@ -14315,7 +14323,6 @@ var main = React.createClass({displayName: 'main',
     return {
      // menuitems:this.selection_menuitems(),
       menupayload:{}
-      ,views:testdata
       ,markupdialog:markuppanel.defaultDialog
       ,markuptype:null
     };
@@ -14331,22 +14338,24 @@ var main = React.createClass({displayName: 'main',
   componentDidUpdate:function() {
     this.deletinggid=null;
   },
-  loadMarkups:function() {
+  loadMarkups:function(views) {
     var keys=[];
-    testdata.map(function(t){t.map(function(m){keys.push(m.name)})});
+    views.map(function(t){t.map(function(m){keys.push(m.name)})});
     persistent.loadMarkups(keys,function(bulk){
       this.setState({markupready:true,bulk:bulk});
     },this);
   },
   componentDidMount:function() {
-    this.loadMarkups();
+    
   },
   viewExtra:function(name) {
-    var match=this.state.bulk.filter(function(m){
+    var match=[];
+    if (this.state.bulk) match=this.state.bulk.filter(function(m){
       return (m._id==name);
     });
     var markups=[];
     if (match.length) markups=match[0].markups;
+    var views=[];
     var readonly=!this.state.markuptype;
     return {markuptype:this.state.markuptype, hovergid:this.state.hovergid,deletinggid:this.deletinggid, markups: markups , readonly:readonly};
   },
@@ -14426,26 +14435,40 @@ var main = React.createClass({displayName: 'main',
     } else if (action=="resetMarkups") {
       persistent.resetMarkups(this.state.bulk);
       this.forceUpdate();
+    } else if (action=="dataset") {
+      this.setState({views:opts});
+      this.loadMarkups(opts);
     }
   },
 
   render: function() {
-    if (!this.state.markupready) return React.DOM.div(null, "loading");
+    var left=[],right=[];
+    var leftcol=6,rightcol=6;
+    if (this.state.views) {
+      left=this.state.views[0];
+      leftcol=left[0].cols||leftcol;
+    }
+    if (this.state.views) {
+      right=this.state.views[1];
+      rightcol=right[0].cols||rightcol;
+    }
     return (
-      React.DOM.div( {id:"main"}, 
+      React.DOM.div( {id:"main"},  
         controlpanel( {action:this.action}),
         markuppanel( {action:this.action}),
         this.state.markupdialog?this.state.markupdialog({ref:"markupdialog",action:this.action,type:this.state.markuptype,title:this.state.markupdialog_title}):null,
-        React.DOM.div(null, 
+        React.DOM.div(null,  
         hoverMenu( {action:this.action, 
           readonly:!this.state.markuptype,
           markup:this.state.hoverMarkup, target:this.state.hoverToken, 
-          editable:this.state.markupeditable, x:this.state.x, y:this.state.y}),
-        React.DOM.div( {className:"col-md-3"}, 
-          stackview( {view:textview, action:this.action, views:this.state.views[0],extra:this.viewExtra}  )
+          editable:this.state.markupeditable, x:this.state.x, y:this.state.y}), 
+        React.DOM.div( {className:"views"}, 
+        React.DOM.div( {className:"col-md-"+leftcol}, 
+          stackview( {view:textview, action:this.action, views:left, extra:this.viewExtra}  )
         ),
-        React.DOM.div( {className:"col-md-9"}, 
-          stackview( {view:textview, action:this.action, views:this.state.views[1], extra:this.viewExtra} )
+        React.DOM.div( {className:"col-md-"+rightcol}, 
+          stackview( {view:textview, action:this.action, views:right, extra:this.viewExtra} )
+        )
         )
         )
       )
@@ -14453,19 +14476,6 @@ var main = React.createClass({displayName: 'main',
   }
 });
 module.exports=main;
-});
-require.register("pncdemo-main/testdata.js", function(exports, require, module){
-var yijing=[[
-        {name:"qian",content:"乾\n元亨，利貞。天行健，君子以自強不息。\n初九：潛龍，勿用。\n九二：見龍在田，利見大人。\n九三：君子終日乾乾，夕惕若，厲，无咎。\n九四：或躍在淵，无咎。\n九五：飛龍在天，利見大人。\n上九：亢龍有悔。\n用九：見群龍无首，吉。"}
-        ,{name:"kun",content:"坤\n元亨，利牝馬之貞。君子有攸往，先迷後得主，利西南得朋，東北喪朋。安貞，吉。\n地勢坤，君子以厚德載物。\n初六：履霜，堅冰至。\n六二：直，方，大，不習无不利。\n六三：含章可貞。或從王事，无成有終。\n六四：括囊；无咎，无譽。\n六五：黃裳，元吉。\n上六：龍戰于野，其血玄黃。\n用六：利永貞。"}
-]
-        /*
-        ,{name:"v3",content:"屯\n元亨，利貞，勿用有攸往，利建侯。屯，剛柔始交而難生，動乎險中，大亨貞。雷雨之動滿盈，天造草昧，宜建侯而不寧。\n初九：磐桓；利居貞，利建侯。六二：屯如邅如，乘馬班如。匪寇婚媾，女子貞不字，十年乃字。六三：即鹿无虞，惟入于林中，君子幾不如舍，往吝。六四：乘馬班如，求婚媾，往吉，无不利。九五：屯其膏，小貞吉，大貞凶。上六：乘馬班如，泣血漣如。"}
-        ,{name:"v4",content:"蒙\n亨。匪我求童蒙，童蒙求我。初筮告，再三瀆，瀆則不告。利貞。\n蒙，山下有險，險而止，蒙。蒙亨，以亨行時中也。匪我求童蒙，童蒙求我，志應也。初噬告，以剛中也。再三瀆，瀆則不告，瀆蒙也。蒙以養正，聖功也。\n初六：發蒙，利用刑人，用說桎梏，以往吝。九二：包蒙吉；納婦吉；子克家。六三：用取女；見金夫，不有躬，无攸利。六四：困蒙，吝。六五：童蒙，吉。上九：擊蒙；不利為寇，利禦寇。"}*/
-,[{name:"qian.e1",content:"Qian (represents) what is great and originating, penetrating, advantageous, correct and firm.\nHeaven, in its motion, (gives the idea of) strength. The superior man, in accordance with this, nerves himself to ceaseless activity.\nIn the first (or lowest) NINE, undivided, (we see its subject as) the dragon lying hid (in the deep). It is not the time for active doing.In the second NINE, undivided, (we see its subject as) the dragon appearing in the field. It will be advantageous to meet with the great man.\nIn the third NINE, undivided, (we see its subject as) the superior man active and vigilant all the day, and in the evening still careful and apprehensive. (The position is) dangerous, but there will be no mistake.\nIn the fourth NINE, undivided, (we see its subject as the dragon looking) as if he were leaping up, but still in the deep. There will be no mistake.\nIn the fifth NINE, undivided, (we see its subject as) the dragon on the wing in the sky. It will be advantageous to meet with the great man.\nIn the sixth (or topmost) NINE, undivided, (we see its subject as) the dragon exceeding the proper limits. There will be occasion for repentance.\n(The lines of this hexagram are all strong and undivided, as appears from) the use of the number NINE. If the host of dragons (thus) appearing were to divest themselves of their heads, there would be good fortune."}
- ,{name:"kun.e1",content:"Kun (represents) what is great and originating, penetrating, advantageous, correct and having the firmness of a mare. When the superior man (here intended) has to make any movement, if he take the initiative, he will go astray; if he follow, he will find his (proper) lord. The advantageousness will be seen in his getting friends in the south-west, and losing friends in the north-east. If he rest in correctness and firmness, there will be good fortune.\nThe (capacity and sustaining) power of the earth is what is denoted by Kun. The superior man, in accordance with this, with his large virtue supports (men and) things.\nIn the first SIX, divided, (we see its subject) treading on hoarfrost. The strong ice will come (by and by).\nThe second SIX, divided, (shows the attribute of) being straight, square, and great. (Its operation), without repeated efforts, will be in every respect advantageous.\nThe third SIX, divided, (shows its subject) keeping his excellence under restraint, but firmly maintaining it. If he should have occasion to engage in the king's service, though he will not claim the success (for himself), he will bring affairs to a good issue.\nThe fourth SIX, divided, (shows the symbol of) a sack tied up. There will be no ground for blame or for praise.\nThe fifth SIX, divided, (shows) the yellow lower garment. There will be great good fortune.\nThe sixth SIX, divided (shows) dragons fighting in the wild. Their blood is purple and yellow.\n(The lines of this hexagram are all weak and divided, as appears from) the use of the number six. If those (who are thus represented) be perpetually correct and firm, advantage will arise."}
-]];
-module.exports=yijing;
 });
 require.register("pncdemo-main/selections.js", function(exports, require, module){
 var selections=[];
@@ -14848,6 +14858,7 @@ var textview = React.createClass({displayName: 'textview',
     
     for (var i=tokens.length-1;i>0;i--) {
       var classes="";
+      
       if (tokens[i]=="\n") {
         out='<br/>'+out;
         continue;
@@ -14867,7 +14878,7 @@ var textview = React.createClass({displayName: 'textview',
       out='<span class="'+classes+'" data-n="'+(i+1)+'">'+tokens[i]+'</span>'+out;
       out=this.extraElement(i-1)+out;
     }
-    return out;
+    return out.replace(/\n/g,"<br/>");
   },
   render: function() {
     return (
@@ -15279,7 +15290,9 @@ require.register("pncdemo-controlpanel/index.js", function(exports, require, mod
 
 /* to rename the component, change name of ./component.js and  "dependencies" section of ../../component.js */
 
-//var othercomponent=Require("other"); 
+var dataset={mn118:require("./mn118"),
+             yijing:require("./yijing")};
+
 var controlpanel = React.createClass({displayName: 'controlpanel',
   getInitialState: function() {
     return {bar: "world"};
@@ -15290,16 +15303,67 @@ var controlpanel = React.createClass({displayName: 'controlpanel',
   reset:function() {
     this.props.action("resetMarkups");
   },
+  selectset:function(e) {
+    var name=e.target.dataset["name"];
+    this.props.action("dataset",dataset[name]);
+  },
+  componentDidMount:function() {
+    this.props.action("dataset",dataset["yijing"]);
+  },
+  renderDataset:function() {
+    return (
+      React.DOM.div( {className:"btn-group pull-right"}, 
+        React.DOM.button( {type:"button", className:"btn btn-default dropdown-toggle", 'data-toggle':"dropdown"}, 
+        "Dataset ", React.DOM.span( {className:"caret"})
+        ),
+        React.DOM.ul( {onClick:this.selectset, className:"dropdown-menu", role:"menu"}, 
+          React.DOM.li(null, React.DOM.a( {href:"#", 'data-name':"yijing"}, "YiJing")),
+          React.DOM.li(null, React.DOM.a( {href:"#", 'data-name':"mn118"}, "Ānāpānasatisuttaṁ " ))
+        )
+      )
+      );
+  },
   render: function() {
     return (
       React.DOM.div(null, 
         React.DOM.button( {onClick:this.save, className:"btn btn-success pull-right"}, "Save"),
-        React.DOM.button( {onClick:this.reset, className:"btn btn-danger pull-right"}, "Reset")
+        React.DOM.button( {onClick:this.reset, className:"btn btn-danger pull-right"}, "Reset"),
+        this.renderDataset()
       )
     );
   }
 });
 module.exports=controlpanel;
+});
+require.register("pncdemo-controlpanel/yijing.js", function(exports, require, module){
+var yijing=[[
+        {name:"qian",cols:3,content:"乾\n元亨，利貞。天行健，君子以自強不息。\n初九：潛龍，勿用。\n九二：見龍在田，利見大人。\n九三：君子終日乾乾，夕惕若，厲，无咎。\n九四：或躍在淵，无咎。\n九五：飛龍在天，利見大人。\n上九：亢龍有悔。\n用九：見群龍无首，吉。"}
+        ,{name:"kun",content:"坤\n元亨，利牝馬之貞。君子有攸往，先迷後得主，利西南得朋，東北喪朋。安貞，吉。\n地勢坤，君子以厚德載物。\n初六：履霜，堅冰至。\n六二：直，方，大，不習无不利。\n六三：含章可貞。或從王事，无成有終。\n六四：括囊；无咎，无譽。\n六五：黃裳，元吉。\n上六：龍戰于野，其血玄黃。\n用六：利永貞。"}
+]
+        /*
+        ,{name:"v3",content:"屯\n元亨，利貞，勿用有攸往，利建侯。屯，剛柔始交而難生，動乎險中，大亨貞。雷雨之動滿盈，天造草昧，宜建侯而不寧。\n初九：磐桓；利居貞，利建侯。六二：屯如邅如，乘馬班如。匪寇婚媾，女子貞不字，十年乃字。六三：即鹿无虞，惟入于林中，君子幾不如舍，往吝。六四：乘馬班如，求婚媾，往吉，无不利。九五：屯其膏，小貞吉，大貞凶。上六：乘馬班如，泣血漣如。"}
+        ,{name:"v4",content:"蒙\n亨。匪我求童蒙，童蒙求我。初筮告，再三瀆，瀆則不告。利貞。\n蒙，山下有險，險而止，蒙。蒙亨，以亨行時中也。匪我求童蒙，童蒙求我，志應也。初噬告，以剛中也。再三瀆，瀆則不告，瀆蒙也。蒙以養正，聖功也。\n初六：發蒙，利用刑人，用說桎梏，以往吝。九二：包蒙吉；納婦吉；子克家。六三：用取女；見金夫，不有躬，无攸利。六四：困蒙，吝。六五：童蒙，吉。上九：擊蒙；不利為寇，利禦寇。"}*/
+,[{name:"qian.e1",cols:9,content:"Qian (represents) what is great and originating, penetrating, advantageous, correct and firm.\nHeaven, in its motion, (gives the idea of) strength. The superior man, in accordance with this, nerves himself to ceaseless activity.\nIn the first (or lowest) NINE, undivided, (we see its subject as) the dragon lying hid (in the deep). It is not the time for active doing.In the second NINE, undivided, (we see its subject as) the dragon appearing in the field. It will be advantageous to meet with the great man.\nIn the third NINE, undivided, (we see its subject as) the superior man active and vigilant all the day, and in the evening still careful and apprehensive. (The position is) dangerous, but there will be no mistake.\nIn the fourth NINE, undivided, (we see its subject as the dragon looking) as if he were leaping up, but still in the deep. There will be no mistake.\nIn the fifth NINE, undivided, (we see its subject as) the dragon on the wing in the sky. It will be advantageous to meet with the great man.\nIn the sixth (or topmost) NINE, undivided, (we see its subject as) the dragon exceeding the proper limits. There will be occasion for repentance.\n(The lines of this hexagram are all strong and undivided, as appears from) the use of the number NINE. If the host of dragons (thus) appearing were to divest themselves of their heads, there would be good fortune."}
+ ,{name:"kun.e1",content:"Kun (represents) what is great and originating, penetrating, advantageous, correct and having the firmness of a mare. When the superior man (here intended) has to make any movement, if he take the initiative, he will go astray; if he follow, he will find his (proper) lord. The advantageousness will be seen in his getting friends in the south-west, and losing friends in the north-east. If he rest in correctness and firmness, there will be good fortune.\nThe (capacity and sustaining) power of the earth is what is denoted by Kun. The superior man, in accordance with this, with his large virtue supports (men and) things.\nIn the first SIX, divided, (we see its subject) treading on hoarfrost. The strong ice will come (by and by).\nThe second SIX, divided, (shows the attribute of) being straight, square, and great. (Its operation), without repeated efforts, will be in every respect advantageous.\nThe third SIX, divided, (shows its subject) keeping his excellence under restraint, but firmly maintaining it. If he should have occasion to engage in the king's service, though he will not claim the success (for himself), he will bring affairs to a good issue.\nThe fourth SIX, divided, (shows the symbol of) a sack tied up. There will be no ground for blame or for praise.\nThe fifth SIX, divided, (shows) the yellow lower garment. There will be great good fortune.\nThe sixth SIX, divided (shows) dragons fighting in the wild. Their blood is purple and yellow.\n(The lines of this hexagram are all weak and divided, as appears from) the use of the number six. If those (who are thus represented) be perpetually correct and firm, advantage will arise."}
+]];
+module.exports=yijing;
+});
+require.register("pncdemo-controlpanel/mn118.js", function(exports, require, module){
+var mn118=[[
+ {name:"mn118.p1",content:"Evaṁ me sutaṁ: ekaṁ samayaṁ Bhagavā Sāvatthiyaṁ viharati\nPubbārāme Migāramātupāsāde,\nsambahulehi abhiññātehi abhiññātehi Therehi Sāvakehi saddhiṁ\nāyasmatā ca Sāriputtena, āyasmatā ca Mahāmoggallānena,\nāyasmatā ca Mahākassapena, āyasmatā ca Mahākaccāyanena,\nāyasmatā ca Mahākoṭṭhitena, āyasmatā ca Mahākappinena,\nāyasmatā ca Mahācundena, āyasmatā ca Anuruddhena, \nāyasmatā ca Revatena, āyasmatā ca Ānandena,\naññehi ca abhiññātehi abhiññātehi Therehi Sāvakehi saddhiṁ.\n"}
+,{name:"mn118.p2",content:"Tena kho pana samayena Therā bhikkhū nave bhikkhū  ovadanti anusāsanti.\nAppekacce Therā bhikkhū dasa pi bhikkhū ovadanti anusāsanti,\nappekacce Therā bhikkhū vīsam-pi  bhikkhū ovadanti anusāsanti,\nappekacce Therā bhikkhū tiṁsam-pi bhikkhū ovadanti anusāsanti,\nappekacce Therā bhikkhū cattārīsam-pi  bhikkhū ovadanti anusāsanti,\nte ca navā bhikkhū Therehi bhikkhūhi ovadiyamānā anusāsiyamānā\nuḷāraṁ  pubbenāparaṁ visesaṁ pajānanti. \nTena kho pana samayena Bhagavā Tad-ahuposathe pannarase,  \nPavāraṇāya puṇṇāya puṇṇamāya rattiyā, \nBhikkhusaṅghaparivuto abbhokāse nisinno hoti."} 
+,{name:"mn118.p3",content:"Atha kho Bhagavā, \ntuṇhībhūtaṁ tuṇhībhūtaṁ  Bhikkhusaṅghaṁ anuviloketvā, bhikkhū āmantesi:\n“Āraddhosmi bhikkhave imāya paṭipadāya,\nāraddhacittosmi bhikkhave imāya paṭipadāya\ntasmātiha bhikkhave bhiyyosomattāya viriyaṁ  ārabhatha\nappattassa pattiyā, anadhigatassa adhigamāya, asacchikatassa sacchikiriyāya,\nidhevāhaṁ Sāvatthiyaṁ Komudiṁ cātumāsiniṁ āgamissāmī.” ti "}
+,{name:"mn118.p4",content:"Assosuṁ kho jānapadā bhikkhū:\n“Bhagavā kira tattheva Sāvatthiyaṁ Komudiṁ cātumāsiniṁ āgamissatī,” ti\nte ca  jānapadā bhikkhū Sāvatthiṁ  osaranti Bhagavantaṁ dassanāya. \nTe ca kho  Therā bhikkhū bhiyyosomattāya nave bhikkhū ovadanti anusāsanti,\nappekacce Therā bhikkhū dasa pi bhikkhū ovadanti anusāsanti,\nappekacce Therā bhikkhū visam-pi bhikkhū ovadanti anusāsanti,\nappekacce Therā bhikkhū tiṁsam-pi bhikkhū ovadanti anusāsanti,\nappekacce Therā bhikkhū cattārīsam-pi bhikkhū ovadanti anusāsanti,\nte ca navā bhikkhū therehi bhikkhūhi ovadiyamānā anusāsiyamānā\nuḷāraṁ pubbenāparaṁ visesaṁ pajānanti.\nTena kho pana samayena Bhagavā Tad-ahuposathe pannarase,\nKomudiyā cātumāsiniyā puṇṇāya puṇṇamāya rattiyā, \nBhikkhusaṅghaparivuto abbhokāse nisinno hoti."}
+],
+[
+ {name:"mn118.p1.e",content:"Thus I heard: at one time the Gracious One was dwelling near Sāvatthī\nat Migāra's Mother's mansion in the Eastern Grounds,\ntogether with a great many very well-known Elder Disciples\n(such as) with venerable Sāriputta, with venerable Mahāmoggallāna,\nwith venerable Mahākassapa, with venerable Mahākaccāyana,\nwith venerable Mahākoṭṭhita, with venerable Mahākappina,\nwith venerable Mahācunda, with venerable Anuruddha,\nwith venerable Revata, with venerable Ānanda,\ntogether with other very well-known Elder Disciples."}
+,{name:"mn118.p2.e",content:"Then at that time the Elder monks were advising and instructing the new monks. \nSome Elder monks were advising and instructing ten monks,\nsome Elder monks were advising and instructing twenty monks,\nsome Elder monks were advising and instructing thirty monks,\nsome Elder monks were advising and instructing forty monks,\nand while those new monks were being advised and instructed by the Elder monks\nthey came to know successive lofty attainments. \nThen at that time the Gracious One, on that very Uposatha day of the fifteenth, \non the Pavāraṇā full moon night, \nwas sat in the open air surrounded by the Community of monks.\n"}
+,{name:"mn118.p3.e",content:"Then the Gracious One,\n after seeing the community of monks were maintaining complete silence, addressed the monks (saying):\n“I am satisfied,  monks, with this practice,\nmy mind is satisfied with this practice,\ntherefore, monks, put forth even more energy\nfor the attainment of the unattained, for the accomplishment of the unaccomplished, for the realisation of the unrealised, \nI will be right here at Sāvatthī until the fourth month of Komudī comes.” "}
+,{name:"mn118.p4.e",content:"The monks in the country heard:\n“The Gracious One will be right there at Sāvatthī until the fourth month of Komudī comes,”\nand those monks in the country descended on Sāvatthī to see the Gracious One.\nThose Elder monks put forth even more energy advising and instructing the new monks,\nsome Elder monks were advising and instructing ten monks,\nsome Elder monks were advising and instructing twenty monks,\nsome Elder monks were advising and instructing thirty monks,\nsome Elder monks were advising and instructing forty monks,\nand while those new monks were being advised and instructed by the Elder monks\nthey came to know (even more) successive lofty attainments.\nThen at that time the Gracious One, on that very Uposatha day of the fifteenth,\non the Komudī full moon night at the end of four months,\nwas sat in the open air surrounded by the Community of monks."}
+]
+
+];
+module.exports=mn118;
 });
 require.register("pncdemo/index.js", function(exports, require, module){
 var boot=require("boot");
@@ -15434,7 +15498,6 @@ require.alias("ksanaforge-markupdialogmixin/index.js", "pncdemo/deps/markupdialo
 require.alias("ksanaforge-markupdialogmixin/index.js", "markupdialogmixin/index.js");
 require.alias("ksanaforge-markupdialogmixin/index.js", "ksanaforge-markupdialogmixin/index.js");
 require.alias("pncdemo-main/index.js", "pncdemo/deps/main/index.js");
-require.alias("pncdemo-main/testdata.js", "pncdemo/deps/main/testdata.js");
 require.alias("pncdemo-main/selections.js", "pncdemo/deps/main/selections.js");
 require.alias("pncdemo-main/persistent.js", "pncdemo/deps/main/persistent.js");
 require.alias("pncdemo-main/index.js", "pncdemo/deps/main/index.js");
@@ -15482,6 +15545,8 @@ require.alias("pncdemo-markintertext/index.js", "pncdemo/deps/markintertext/inde
 require.alias("pncdemo-markintertext/index.js", "markintertext/index.js");
 require.alias("pncdemo-markintertext/index.js", "pncdemo-markintertext/index.js");
 require.alias("pncdemo-controlpanel/index.js", "pncdemo/deps/controlpanel/index.js");
+require.alias("pncdemo-controlpanel/yijing.js", "pncdemo/deps/controlpanel/yijing.js");
+require.alias("pncdemo-controlpanel/mn118.js", "pncdemo/deps/controlpanel/mn118.js");
 require.alias("pncdemo-controlpanel/index.js", "pncdemo/deps/controlpanel/index.js");
 require.alias("pncdemo-controlpanel/index.js", "controlpanel/index.js");
 require.alias("pncdemo-controlpanel/index.js", "pncdemo-controlpanel/index.js");

@@ -7123,7 +7123,7 @@ td.visible-print {
 
 .stackview {height:100%;}
 .splitterPane {overflow:auto}
-
+.viewdiv {max-height:250px;overflow:auto;}
 @-webkit-keyframes myselection {
 	0%   {border-color:blue;}
 	50%  {border-color:yellow;border-width:1px;}
@@ -7149,7 +7149,8 @@ td.visible-print {
 	opacity: 0.5;
 }
 .markupdialog {opacity:0.75;}
-.main {height:100%;}
+.main {}
+.views {overflow:auto;height:90%;}
 .comp1 {}
 .textview {line-height:150%;}
 .hovering {background-color:yellow;border-radius: 0.25em}

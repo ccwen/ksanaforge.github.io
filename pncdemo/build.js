@@ -4837,7 +4837,12 @@ require.register("ksana-document/kdb.js", function(exports, require, module){
 
   
 */
-var Kfs=require('./kdbfs');	
+if (typeof ksanagap=="undefined") {
+	var Kfs=require('./kdbfs');		
+} else {
+	var Kfs=require("./kdbfs_ksanagap");
+}
+
 
 var DT={
 	uint8:'1', //unsigned 1 byte integer
@@ -5283,11 +5288,11 @@ if (module) module.exports=Create;
 });
 require.register("ksana-document/kdbfs.js", function(exports, require, module){
 /* OS dependent file operation */
-
+var html5fs=false;
 if (typeof process=="undefined") {
-	var fs=require('./html5fs');
-	var Buffer=function(){ return ""};
-	var html5fs=true; 
+		var fs=require('./html5fs');
+		var Buffer=function(){ return ""};
+		html5fs=true; 		
 } else {
 	if (typeof nodeRequire=="undefined") {
 		if (typeof ksana!="undefined") var nodeRequire=ksana.require;
@@ -5324,6 +5329,7 @@ var unpack_int = function (ar, count , reset) {
   } while (i<ar.length && count);
   return {data:r, adv:i };
 }
+
 var Open=function(path,opts,cb) {
 	opts=opts||{};
 
@@ -6712,6 +6718,21 @@ var API={
   ,queryQuota:queryQuota}
 
   module.exports=API;
+});
+require.register("ksana-document/kdbfs_ksanagap.js", function(exports, require, module){
+var Open=function(path,opts,cb) {
+	opts=opts||{};
+
+	setupapi=function() {
+
+	}
+	ksanagap.log("opening"+path);
+	this.handle=fs.openSync(path);
+	this.opened=true;
+	setupapi.call(this);
+}
+
+module.exports=Open;
 });
 require.register("ksana-document/kse.js", function(exports, require, module){
 /*
@@ -8270,7 +8291,9 @@ var resultlist=function(engine,Q,opts,cb) {
 		var pageNames=engine.getFilePageNames(nfile);
 		files[nfile]={pageOffsets:pageOffsets};
 		var pagewithhit=plist.groupbyposting2(Q.byFile[ nfile ],  pageOffsets);
-		pagewithhit.shift(); //the first item is not used (0~Q.byFile[0] )
+		//if (pageOffsets[0]==1)
+		//pagewithhit.shift(); //the first item is not used (0~Q.byFile[0] )
+
 		for (var j=0; j<pagewithhit.length;j++) {
 			if (!pagewithhit[j].length) continue;
 			//var offsets=pagewithhit[j].map(function(p){return p- fileOffsets[i]});
@@ -8279,14 +8302,14 @@ var resultlist=function(engine,Q,opts,cb) {
 	}
 
 	var pagekeys=output.map(function(p){
-		return ["fileContents",p.file,p.page+1];
+		return ["fileContents",p.file,p.page];
 	});
 	//prepare the text
 	engine.get(pagekeys,function(pages){
 		var seq=0;
 		if (pages) for (var i=0;i<pages.length;i++) {
-			var startvpos=files[output[i].file].pageOffsets[output[i].page];
-			var endvpos=files[output[i].file].pageOffsets[output[i].page+1];
+			var startvpos=files[output[i].file].pageOffsets[output[i].page-1];
+			var endvpos=files[output[i].file].pageOffsets[output[i].page];
 			var hl={};
 
 			if (opts.range && opts.range.start && startvpos<opts.range.start ) {
@@ -13579,8 +13602,7 @@ var filelist = React.createClass({displayName: 'filelist',
 var filemanager = React.createClass({displayName: 'filemanager',
 	getInitialState:function() {
 		var quota=this.getQuota();
-		return {browserReady:false,noupdate:true,
-			requestQuota:quota,remain:0};
+		return {browserReady:false,noupdate:true,	requestQuota:quota,remain:0};
 	},
 	getQuota:function() {
 		var q=this.props.quota||"128M";
@@ -13591,6 +13613,7 @@ var filemanager = React.createClass({displayName: 'filemanager',
 		return parseInt(q) * times;
 	},
 	missingKdb:function() {
+		if (typeof ksanagap!="undefined") return [];
 		var missing=this.props.needed.filter(function(kdb){
 			for (var i in html5fs.files) {
 				if (html5fs.files[i][0]==kdb.filename) return false;
@@ -13625,6 +13648,13 @@ var filemanager = React.createClass({displayName: 'filemanager',
 	  },this);
 	},
 	onQuoteOk:function(quota,usage) {
+		if (typeof ksanagap!="undefined") {
+			console.log("onquoteok");
+			this.setState({noupdate:true,missing:[],files:[],autoclose:true
+				,quota:quota,remain:quota-usage});
+			return;
+		}
+		console.log("quote ok");
 		var files=this.genFileList(html5fs.files,this.missingKdb());
 		var that=this;
 		that.checkIfUpdate(files,function(hasupdate) {
@@ -13726,7 +13756,8 @@ require.register("ksanaforge-checkbrowser/index.js", function(exports, require, 
 /** @jsx React.DOM */
 
 var checkfs=function() {
-	return (navigator && navigator.webkitPersistentStorage);
+	return (navigator && navigator.webkitPersistentStorage) || 
+	(typeof ksanagap!="undefined");
 }
 var featurechecks={
 	"fs":checkfs
@@ -13863,9 +13894,13 @@ var htmlfs = React.createClass({displayName: 'htmlfs',
 		},0);
 	},
 	queryQuota:function() {
-		html5fs.queryQuota(function(usage,quota){
-			this.setState({usage:usage,quota:quota,initialized:true});
-		},this);
+		if (typeof ksanagap=="undefined") {
+			html5fs.queryQuota(function(usage,quota){
+				this.setState({usage:usage,quota:quota,initialized:true});
+			},this);			
+		} else {
+			this.setState({usage:333,quota:1000*1000*1024,initialized:true,autoclose:true});
+		}
 	},
 	render:function() {
 		var that=this;
@@ -14312,7 +14347,21 @@ var markuppanel=Require("markuppanel");
 var hoverMenu=Require("hovermenu");
 var selections=require("./selections");
 var persistent=require("./persistent");
-
+function detectmob() { 
+ if( navigator.userAgent.match(/Android/i)
+ || navigator.userAgent.match(/webOS/i)
+ || navigator.userAgent.match(/iPhone/i)
+ || navigator.userAgent.match(/iPad/i)
+ || navigator.userAgent.match(/iPod/i)
+ || navigator.userAgent.match(/BlackBerry/i)
+ || navigator.userAgent.match(/Windows Phone/i)
+ ){
+    return true;
+  }
+ else {
+    return false;
+  }
+}
 var main = React.createClass({displayName: 'main',
   selection_menuitems:function() {
     return [
@@ -14320,6 +14369,7 @@ var main = React.createClass({displayName: 'main',
     ]
   },
   getInitialState: function() {
+    React.initializeTouchEvents(true);
     return {
      // menuitems:this.selection_menuitems(),
       menupayload:{}
@@ -14346,7 +14396,9 @@ var main = React.createClass({displayName: 'main',
     },this);
   },
   componentDidMount:function() {
-    
+    if (detectmob()) {
+      this.getDOMNode().classList.add("noselect");
+    }
   },
   viewExtra:function(name) {
     var match=[];
@@ -14451,13 +14503,13 @@ var main = React.createClass({displayName: 'main',
     if (this.state.views) {
       right=this.state.views[1];
       rightcol=right[0].cols||rightcol;
-    }
+    } 
     return (
       React.DOM.div( {id:"main"},  
         controlpanel( {action:this.action}),
         markuppanel( {action:this.action}),
         this.state.markupdialog?this.state.markupdialog({ref:"markupdialog",action:this.action,type:this.state.markuptype,title:this.state.markupdialog_title}):null,
-        React.DOM.div(null,  
+        React.DOM.div(null, 
         hoverMenu( {action:this.action, 
           readonly:!this.state.markuptype,
           markup:this.state.hoverMarkup, target:this.state.hoverToken, 
@@ -14742,15 +14794,23 @@ var textview = React.createClass({displayName: 'textview',
   },
   mouseUp:function(e) { 
     if (this.props.extra.readonly) return;
-    var sel=getselection();
-    var x=e.pageX,y=e.pageY;
-    if (e.ctrlKey && sel && sel.len) {
+    if (this.touchstartn>-1) {
+      sel={start:this.touchstartn, len:this.touchendn-this.touchstartn+1};
+      if (sel.len>10) {
+        this.clearSelected();
+        return;
+      }
+    } else {
+      var sel=getselection();  
+    }
+    if (e && e.ctrlKey && sel && sel.len) {
+      //var x=e.pageX,y=e.pageY;
       var ranges=this.addSelection(sel.start,sel.len);
-      this.props.action("appendSelection",{ranges:ranges,x:x,y:y,view:this});
+      this.props.action("appendSelection",{ranges:ranges,view:this});
     } else {
       if (sel && sel.len) {
         var ranges=this.addSelection(sel.start,sel.len);
-        this.props.action("selection",{ranges:ranges, x:x,y:y, view:this});        
+        this.props.action("selection",{ranges:ranges, view:this});
       } else {
         this.props.action("selection",{ranges:null,view:this});
         this.clearRanges();
@@ -14880,10 +14940,81 @@ var textview = React.createClass({displayName: 'textview',
     }
     return out.replace(/\n/g,"<br/>");
   },
+  onClick:function(e) {
+    e.preventDefault();
+    alert(e.target.dataset['n'])
+  },
+  clearSelected:function() {
+    $(this.getDOMNode()).find(".selected").removeClass("selected")
+    .removeClass("selected_e").removeClass("selected_b");
+  },
+  touchStart:function(e){
+    if (e.target.dataset.n) {
+      this.touchstartn=e.target.dataset.n;
+      this.touchstartx=e.changedTouches[0].pageX;
+      this.touchstarty=e.changedTouches[0].pageY;
+      this.touchstartelement=e.target;
+      this.range=document.createRange();     
+    } else {
+      this.clearSelected();
+      this.touchstartn=-1;
+      this.range=null;
+    }
+  },
+  markSelection:function() {
+    var from=this.touchstartn;
+    var to=this.touchendn;
+    this.clearSelected();
+    for (var i=from;i<=to;i++) {
+      var node=$(this.getDOMNode()).find("span[data-n='"+i+"']")[0];
+      if (i==from) node.classList.add("selected_b");
+      if (i==to) node.classList.add("selected_e");
+      node.classList.add("selected");
+    }
+  },
+  touchMove:function(e){
+    if (!this.touchstartn==-1) return;
+    var T=e.changedTouches[0];
+    var rect=e.target.getBoundingClientRect();
+    var stopElement=this.findElement(T.pageX,T.pageY);//T.pageX-rect.left, T.pageY-rect.top);
+    if (stopElement && stopElement.dataset.n) {
+      this.touchendelement=stopElement;
+      this.touchendn=stopElement.dataset.n;
+
+      this.markSelection();
+      //this.range.setStart(this.touchstartelement.firstChild,0);
+      //this.range.setEnd(stopElement.firstChild, 1);
+    }
+  },
+  getOffset:function (object, offset) {
+      if (!object) return;
+      offset.x += object.offsetLeft;
+      offset.y += object.offsetTop;
+
+      this.getOffset (object.offsetParent, offset);
+  },
+  findElement:function(x,y) {
+    var stopElement=this.touchstartelement;
+    while (stopElement) {
+      var off={x:0,y:0};
+      var h=stopElement.offsetHeight, w=stopElement.offsetWidth;
+      this.getOffset(stopElement,off);
+      if (x>off.x &&x<off.x+w && y>off.y&&y<off.y+h) break;
+      stopElement=stopElement.nextSibling;
+    }
+    return stopElement;
+  },
+  touchEnd:function(e){
+    //console.log(this.touchstartelement,this.touchendelement);
+    this.mouseUp(e);
+  },
   render: function() {
     return (
       React.DOM.div(null, 
         React.DOM.div( {className:"textview", 
+          onTouchStart:this.touchStart,
+          onTouchMove:this.touchMove,
+          onTouchEnd:this.touchEnd,
           onMouseUp:this.mouseUp,
           onMouseOut:this.mouseOut,
           onMouseMove:this.mouseMove, dangerouslySetInnerHTML:{__html:this.toXML(this.props.text)}}
@@ -15441,6 +15572,7 @@ require.alias("ksana-document/kdbw.js", "pncdemo/deps/ksana-document/kdbw.js");
 require.alias("ksana-document/kdb_sync.js", "pncdemo/deps/ksana-document/kdb_sync.js");
 require.alias("ksana-document/kdbfs_sync.js", "pncdemo/deps/ksana-document/kdbfs_sync.js");
 require.alias("ksana-document/html5fs.js", "pncdemo/deps/ksana-document/html5fs.js");
+require.alias("ksana-document/kdbfs_ksanagap.js", "pncdemo/deps/ksana-document/kdbfs_ksanagap.js");
 require.alias("ksana-document/kse.js", "pncdemo/deps/ksana-document/kse.js");
 require.alias("ksana-document/kde.js", "pncdemo/deps/ksana-document/kde.js");
 require.alias("ksana-document/boolsearch.js", "pncdemo/deps/ksana-document/boolsearch.js");

@@ -14555,7 +14555,7 @@ var main = React.createClass({displayName: 'main',
   updateSelection:function(view,ranges) {
     selections.update(view,ranges);
   },
-  action: function() { 
+  action: function() {
     var args = [];
     Array.prototype.push.apply( args, arguments );
     var action=args.shift();
@@ -15039,7 +15039,7 @@ var textview = React.createClass({displayName: 'textview',
     var M=underlines.levelMarkups(markups);
     var mid=0; //markup id
     
-    for (var i=tokens.length-1;i>0;i--) {
+    for (var i=tokens.length-1;i>=0;i--) {
       var classes="";
       
       if (tokens[i]=="\n") {
@@ -15580,8 +15580,9 @@ require.register("pncdemo-controlpanel/index.js", function(exports, require, mod
 /* to rename the component, change name of ./component.js and  "dependencies" section of ../../component.js */
 
 var dataset={mn118:require("./mn118"),
-             yijing:require("./yijing")};
-
+             yijing:require("./yijing"),
+             oclp:require("./oclp")};
+ 
 var controlpanel = React.createClass({displayName: 'controlpanel',
   getInitialState: function() {
     return {bar: "world"};
@@ -15607,7 +15608,8 @@ var controlpanel = React.createClass({displayName: 'controlpanel',
         ), 
         React.DOM.ul({onClick: this.selectset, className: "dropdown-menu", role: "menu"}, 
           React.DOM.li(null, React.DOM.a({href: "#", 'data-name': "yijing"}, "YiJing")), 
-          React.DOM.li(null, React.DOM.a({href: "#", 'data-name': "mn118"}, "Ānāpānasatisuttaṁ "))
+          React.DOM.li(null, React.DOM.a({href: "#", 'data-name': "mn118"}, "Ānāpānasatisuttaṁ")), 
+          React.DOM.li(null, React.DOM.a({href: "#", 'data-name': "oclp"}, "Occupy Central with Love and Peace"))
         )
       )
       );
@@ -15653,6 +15655,21 @@ var mn118=[[
 
 ];
 module.exports=mn118;
+});
+require.register("pncdemo-controlpanel/oclp.js", function(exports, require, module){
+var news=[
+        {name:"法新社",content:"全民反暴 佔中10萬人湧入\n由香港專上學生聯會（學聯）、學民思潮、和平佔中行動、香港職工會聯盟等多個團體組成的「支援學界全民抗命聯合陣線」，四日晚間八時在金鐘夏愨道舉行「全民反暴、和平抗爭」集會，數以萬計群眾響應。學聯表示，加上旺角、銅鑼灣，四日晚間共有十萬人參加集會。（法新社）"}
+        ,{name:"中央社",content:"占中晚間金鐘集會 籲全民反暴\n（中央社香港4日電）香港專上學生聯會、學民思潮及和平占中的「支援學界全民抗命聯合陣線」今晚8時將舉行「全民反暴‧和平抗爭」大集會，籲各界聲援。\n學聯下午在臉書公布，預定晚間8時在金鐘夏愨道舉行「全民反暴‧和平抗爭」大集會，邀請受到襲擊的香港市民在現場見證，並發表各界支援聲明。\n學聯臉書還公布，上午10時37分，旺角集會地點，有市民送來頭盔，以示對集會者的支持，並希望他們保障自己安全。\n反占中與占中民眾昨天在旺角等地爆發流血衝突，學聯3日晚發表聲明說，港府與警方3日縱容黑社會襲擊和平占中者，「政府出爾反爾，對話之路除擱置外別無他路」。警方必須要為此問責。\n另據香港電台報導，在旺角集會現場，今天中午過後，聚集愈來愈多民眾，反占中民眾持續與占中民眾發生口角爭執，下午1時多在彌敦道與奶路臣街交界處，雙方再發生肢體衝突。警方已再度增派員警到場築起人牆調停。"},
+        {name:"中時電子報",content:"香港旺角和銅鑼灣等地3日晚間爆發流血衝突，香港警方4日證實，在拘捕的19人中，8人有黑幫背景。占中主要團體香港專上學生聯會（學聯）痛批警方縱容黑道，因而發起4日晚間於金鐘政府總部大集會，港警則嚴詞反駁與黑幫勾結的指控。\n針對3日晚間發生的流血衝突，學聯、學民思潮等占中團體4日晚間8時舉行「全民反暴．和平抗爭」大集會，呼籲各界聲援。集會邀請受到襲擊的香港市民在現場見證，並發表各界支持聲明。\n學聯發表聲明，痛批港府與警方縱容黑社會襲擊和平占中者，政府出爾反爾，對話之路除擱置外別無他路；警方必須要為此問責。學聯強調，如果港府不就旺角衝突事件作出解釋，向港人交代，雙方就無法對話。\n除學聯指控警方在衝突中刻意放縱黑道外，國際特赦組織也指稱港警「失職」，沒有保護抗議群眾免於遭受暴力，多名婦女和女孩遭受攻擊，包含性侵犯、騷擾和恐嚇。"},
+ {name:"加拿大星島日報",content:"學生籲周六晚參加全民反暴集會\n香港專上學生聯會(學聯)、學民思潮及和平佔中的「支援學界全民抗命聯合陣線」，宣布會在香港時間周六晚上8時，在港島金鐘舉行「全民反暴‧和平抗爭」大集會，呼籲市民前來見證，並發表各界支援聲明，屆時將對連日佔中人士不斷受到反佔中力量的武力攻擊，發出強烈的譴責。"},
+{name:"大紀元",content:"【大紀元2014年10月04日訊】10月3日，中共動員潛伏在香港的地下黨員、特務組織、中共控制的黑社會幫派成員，大規模襲擊、圍攻九龍區旺角及香港島銅鑼灣的雨傘革命示威者。在旺角，有示威學生和市民被暴徒打至頭破血流。當晚，學聯宣佈擱置與政務司司長林鄭月娥的對話。4日，學聯再發聲明，將於4日晚8時舉行「全民反暴 和平抗爭」大集會。\n據在香港獨立媒體網facebook上發出的學聯聲明中稱，10月4日晚8時，「全民反暴 和平抗爭」大集會將在金鐘夏愨道舉行，內容有「受襲市民見證，各界支持聲明」。\n香港雨傘革命已進入第六天，4日，受中共指使的黑幫仍在現場進行破壞。除了辱罵、毆打、推撞和非禮示威市民和學生外，中共控制的黑幫成員還把現場的大型帳篷掀翻，大肆破壞物資站，學生的物資也被搶。\n暴徒還用流氓手段，多次對女大學生進行性騷擾、非禮等性暴力罪行，包括有市民拍到有女性遭到在裙底下攬腳，被人以語言性騷擾及辱罵等。多個團體表示強烈譴責。"},
+{name:"蘋果日報",content:"邁入第7天香港佔中行動，昨天遭到自稱「反佔中」人士暴力襲擊，至少造成37人受傷，學聯因此聲明擱置與港府對話。今天下午，學聯、學民思潮及和平佔中的「支援學界全民抗命聯合陣線」再度發出聲明，號召香港市民今晚8時，一起到金鐘夏愨道舉行「全民反暴‧和平抗爭」集會。\n香港警方統計，昨夜流血衝突，光是旺角就有6人送醫，其中2人還被打到頭破血流，6天下來，共有131人受傷送醫，也因此讓佔中三子的戴耀廷發出呼籲，希望佔中群眾棄守旺角、銅鑼灣，一起堅守金鐘的政總主場區。（突發中心／香港報導）"},
+{name:"新加坡聯合早報",content:"（联合早报网讯）香港专上学生联会、学民思潮及和平占中的“支援学界全民抗命联合阵线”，今晚8时将举行“全民反暴-和平抗争”大集会，吁各界声援。\n据中央社报道，港学联下午在面簿公布，预定晚间8时在金钟夏悫道举行“全民反暴-和平抗争”大集会，邀请受到袭击的香港市民在现场见证，并发表各界支援声明。\n学联面簿还公布，上午10时37分，旺角集会地点，有市民送来头盔，以示对集会者的支持，并希望他们保障自己安全。\n反占中与占中民众昨天在旺角等地爆发流血冲突，学联3日晚发表声明说，港府与警方3日纵容黑社会袭击和平占中者，“政府出尔反尔，对话之路除搁置外别无他路”。警方必须要为此问责。\n另据香港电台报道，在旺角集会现场，今天中午过后，聚集愈来愈多民众，反占中民众持续与占中民众发生口角争执，下午1时多在弥敦道与奶路臣街交界处，双方再发生肢体冲突。警方已再度增派员警到场筑起人墙调停。"}
+
+
+];
+var oclp=[news,news];
+module.exports=oclp;
 });
 require.register("pncdemo-viewer/index.js", function(exports, require, module){
 /** @jsx React.DOM */
@@ -15912,6 +15929,7 @@ require.alias("pncdemo-markintertext/index.js", "pncdemo-markintertext/index.js"
 require.alias("pncdemo-controlpanel/index.js", "pncdemo/deps/controlpanel/index.js");
 require.alias("pncdemo-controlpanel/yijing.js", "pncdemo/deps/controlpanel/yijing.js");
 require.alias("pncdemo-controlpanel/mn118.js", "pncdemo/deps/controlpanel/mn118.js");
+require.alias("pncdemo-controlpanel/oclp.js", "pncdemo/deps/controlpanel/oclp.js");
 require.alias("pncdemo-controlpanel/index.js", "pncdemo/deps/controlpanel/index.js");
 require.alias("pncdemo-controlpanel/index.js", "controlpanel/index.js");
 require.alias("pncdemo-controlpanel/index.js", "pncdemo-controlpanel/index.js");

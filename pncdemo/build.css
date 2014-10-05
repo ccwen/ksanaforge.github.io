@@ -7153,8 +7153,8 @@ td.visible-print {
     -webkit-touch-callout: none;
     -webkit-user-select: none; /* Disable selection/copy in UIWebView */
 }
-.mobile {font-size:200%;}
-.desktop {font-size:150%;}
+.mobile {font-size:150%;}
+.desktop {font-size:200%;}
 .views {overflow:auto;height:90%;}
 .comp1 {}
 .textview {line-height:150%;}

@@ -215,7 +215,8 @@ if (typeof process !="undefined") {
 	ksana.platform="chrome";
 }
 
-if (typeof React=="undefined") window.React=require('../react');
+//if (typeof React=="undefined") window.React=require('../react');
+
 //require("../cortex");
 var Require=function(arg){return require("../"+arg)};
 var boot=function(appId,main,maindiv) {
@@ -4868,7 +4869,7 @@ var _readLog=function(readtype,bytes) {
 	console.log(readtype,bytes,"bytes");
 }
 if (verbose) readLog=_readLog;
-
+var strsep="\uffff";
 var Create=function(path,opts,cb) {
 	/* loadxxx functions move file pointer */
 	// load variable length int
@@ -4876,11 +4877,13 @@ var Create=function(path,opts,cb) {
 		cb=opts;
 		opts={};
 	}
+
 	
 	var loadVInt =function(opts,blocksize,count,cb) {
 		//if (count==0) return [];
 		var that=this;
 		this.fs.readBuf_packedint(opts.cur,blocksize,count,true,function(o){
+			//console.log("vint");
 			opts.cur+=o.adv;
 			cb.apply(that,[o.data]);
 		});
@@ -4888,6 +4891,7 @@ var Create=function(path,opts,cb) {
 	var loadVInt1=function(opts,cb) {
 		var that=this;
 		loadVInt.apply(this,[opts,6,1,function(data){
+			//console.log("vint1");
 			cb.apply(that,[data[0]]);
 		}])
 	}
@@ -4895,6 +4899,7 @@ var Create=function(path,opts,cb) {
 	var loadPInt =function(opts,blocksize,count,cb) {
 		var that=this;
 		this.fs.readBuf_packedint(opts.cur,blocksize,count,false,function(o){
+			//console.log("pint");
 			opts.cur+=o.adv;
 			cb.apply(that,[o.data]);
 		});
@@ -4936,8 +4941,8 @@ var Create=function(path,opts,cb) {
 				if (opts.lazy) { 
 						var offset=L.offset;
 						L.sz.map(function(sz){
-							o[o.length]="\0"+offset.toString(16)
-								   +"\0"+sz.toString(16);
+							o[o.length]=strsep+offset.toString(16)
+								   +strsep+sz.toString(16);
 							offset+=sz;
 						})
 				} else {
@@ -4994,8 +4999,8 @@ var Create=function(path,opts,cb) {
 					var offset=L.offset;
 					for (var i=0;i<L.sz.length;i++) {
 						//prefix with a \0, impossible for normal string
-						o[keys[i]]="\0"+offset.toString(16)
-							   +"\0"+L.sz[i].toString(16);
+						o[keys[i]]=strsep+offset.toString(16)
+							   +strsep+L.sz[i].toString(16);
 						offset+=L.sz[i];
 					}
 				} else {
@@ -5140,8 +5145,8 @@ var Create=function(path,opts,cb) {
 		var key=path.pop();
 		var that=this;
 		get.apply(this,[path,false,function(data){
-			if (!path.join('\0')) return (!!KEY[key]);
-			var keys=KEY[path.join('\0')];
+			if (!path.join(strsep)) return (!!KEY[key]);
+			var keys=KEY[path.join(strsep)];
 			path.push(key);//put it back
 			if (keys) cb.apply(that,[keys.indexOf(key)>-1]);
 			else cb.apply(that,[false]);
@@ -5152,8 +5157,8 @@ var Create=function(path,opts,cb) {
 		if (!CACHE) return undefined;	
 		var o=CACHE;
 		for (var i=0;i<path.length;i++) {
-			var r=o[path[i]] ;
-			if (r===undefined) return undefined;
+			var r=o[path[i]];
+			if (typeof r=="undefined") return null;
 			o=r;
 		}
 		return o;
@@ -5170,9 +5175,7 @@ var Create=function(path,opts,cb) {
 		if (typeof cb!='function') return getSync(path);
 
 		reset.apply(this,[function(){
-
 			var o=CACHE;
-
 			if (path.length==0) {
 				cb(Object.keys(CACHE));
 				return;
@@ -5181,13 +5184,12 @@ var Create=function(path,opts,cb) {
 			var pathnow="",taskqueue=[],opts={},r=null;
 			var lastkey="";
 
-
 			for (var i=0;i<path.length;i++) {
 				var task=(function(key,k){
 
 					return (function(data){
 						if (!(typeof data=='object' && data.__empty)) {
-							if (typeof o[lastkey]=='string' && o[lastkey][0]=="\0") o[lastkey]={};
+							if (typeof o[lastkey]=='string' && o[lastkey][0]==strsep) o[lastkey]={};
 							o[lastkey]=data; 
 							o=o[lastkey];
 							r=data[key];
@@ -5201,15 +5203,15 @@ var Create=function(path,opts,cb) {
 							taskqueue=null;
 							cb.apply(that,[r]); //return empty value
 						} else {							
-							if (parseInt(k)) pathnow+="\0";
+							if (parseInt(k)) pathnow+=strsep;
 							pathnow+=key;
-							if (typeof r=='string' && r[0]=="\0") { //offset of data to be loaded
-								var p=r.substring(1).split("\0").map(function(item){return parseInt(item,16)});
+							if (typeof r=='string' && r[0]==strsep) { //offset of data to be loaded
+								var p=r.substring(1).split(strsep).map(function(item){return parseInt(item,16)});
 								var cur=p[0],sz=p[1];
 								opts.lazy=!recursive || (k<path.length-1) ;
 								opts.blocksize=sz;opts.cur=cur,opts.keys=[];
+								lastkey=key; //load is sync in android
 								load.apply(that,[opts, taskqueue.shift()]);
-								lastkey=key;
 							} else {
 								var next=taskqueue.shift();
 								next.apply(that,[r]);
@@ -5242,7 +5244,7 @@ var Create=function(path,opts,cb) {
 		var that=this;
 		get.apply(this,[path,false,function(){
 			if (path && path.length) {
-				cb.apply(that,[KEY[path.join("\0")]]);
+				cb.apply(that,[KEY[path.join(strsep)]]);
 			} else {
 				cb.apply(that,[Object.keys(CACHE)]); 
 				//top level, normally it is very small
@@ -5288,11 +5290,11 @@ if (module) module.exports=Create;
 });
 require.register("ksana-document/kdbfs.js", function(exports, require, module){
 /* OS dependent file operation */
-var html5fs=false;
+
 if (typeof process=="undefined") {
-		var fs=require('./html5fs');
-		var Buffer=function(){ return ""};
-		html5fs=true; 		
+	var fs=require('./html5fs');
+	var Buffer=function(){ return ""};
+	var html5fs=true; 
 } else {
 	if (typeof nodeRequire=="undefined") {
 		if (typeof ksana!="undefined") var nodeRequire=ksana.require;
@@ -5329,7 +5331,6 @@ var unpack_int = function (ar, count , reset) {
   } while (i<ar.length && count);
   return {data:r, adv:i };
 }
-
 var Open=function(path,opts,cb) {
 	opts=opts||{};
 
@@ -5407,12 +5408,12 @@ var Open=function(path,opts,cb) {
 	var buf2stringarr=function(buf,enc) {
 		if (enc=="utf8") 	var arr=new Uint8Array(buf);
 		else var arr=new Uint16Array(buf);
-		var i=0,codes=[],out=[];
+		var i=0,codes=[],out=[],s="";
 		while (i<arr.length) {
 			if (arr[i]) {
 				codes[codes.length]=arr[i];
 			} else {
-				var s=String.fromCharCode.apply(null,codes);
+				s=String.fromCharCode.apply(null,codes);
 				if (enc=="utf8") out[out.length]=decodeutf8(s);
 				else out[out.length]=s;
 				codes=[];				
@@ -6720,16 +6721,104 @@ var API={
   module.exports=API;
 });
 require.register("ksana-document/kdbfs_ksanagap.js", function(exports, require, module){
+/*
+  JAVA can only return Number and String
+	array and buffer return in string format
+	need JSON.parse
+*/
+var readSignature=function(pos,cb) {
+	//console.log("read signature");
+	var signature=fs.readStringSync(this.handle,pos,1);
+	//console.log(signature);
+	cb.apply(this,[signature]);
+}
+var readI32=function(pos,cb) {
+	//console.log("read i32");
+	var i32=fs.readInt32Sync(this.handle,pos);
+	//console.log(i32);
+	cb.apply(this,[i32]);	
+}
+var readUI32=function(pos,cb) {
+	//console.log("read ui32");
+	var ui32=fs.readUInt32Sync(this.handle,pos);
+	//console.log(ui32);
+	cb.apply(this,[ui32]);
+}
+var readUI8=function(pos,cb) {
+	//console.log("read ui8"); 
+	var ui8=fs.readUInt8Sync(this.handle,pos);
+	//console.log("ui8="+ui8);
+	cb.apply(this,[ui8]);
+}
+var readBuf=function(pos,blocksize,cb) {
+	//console.log("read buffer");
+	var buf=fs.readBufSync(this.handle,pos,blocksize);
+	var buff=JSON.parse(buf);
+	//console.log(buff);
+	cb.apply(this,[buff]);	
+}
+var readBuf_packedint=function(pos,blocksize,count,reset,cb) {
+	//console.log("read packed int3");
+	var buf=fs.readBufSync_packedint(this.handle,pos,blocksize,count,reset);
+	var adv=parseInt(buf);
+	var buff=JSON.parse(buf.substr(buf.indexOf("[")));
+	//console.log(buff.length);
+	cb.apply(this,[{data:buff,adv:adv}]);	
+}
+
+
+var readString= function(pos,blocksize,encoding,cb) {
+	//console.log("readstring"+blocksize+" "+encoding);
+	var str=fs.readEncodedStringSync(this.handle,pos,blocksize,encoding);
+	//console.log(str);
+	cb.apply(this,[str]);	
+}
+
+var readFixedArray = function(pos ,count, unitsize,cb) {
+	//console.log("read fixed array"); 
+	var buf=fs.readFixedArraySync(this.handle,pos,count,unitsize);
+	var buff=JSON.parse(buf);
+	//console.log(buff.length);
+	cb.apply(this,[buff]);	
+}
+var readStringArray = function(pos,blocksize,encoding,cb) {
+	//console.log("read String array "+blocksize +" "+encoding); 
+
+	var buf=fs.readStringArraySync(this.handle,pos,blocksize,encoding);
+	//var buff=JSON.parse(buf);
+	//console.log(buf);
+	var buff=buf.split("\uffff"); //cannot return string with 0
+	//console.log(buff.length);
+	cb.apply(this,[buff]);	
+}
+var free=function() {
+	////console.log('closing ',handle);
+	fs.closeSync(this.handle);
+}
 var Open=function(path,opts,cb) {
 	opts=opts||{};
-
-	setupapi=function() {
-
+	var signature_size=1;
+	var setupapi=function() { 
+		this.readSignature=readSignature;
+		this.readI32=readI32;
+		this.readUI32=readUI32;
+		this.readUI8=readUI8;
+		this.readBuf=readBuf;
+		this.readBuf_packedint=readBuf_packedint;
+		this.readFixedArray=readFixedArray;
+		this.readString=readString;
+		this.readStringArray=readStringArray;
+		this.signature_size=signature_size;
+		this.free=free;
+		this.size=fs.getFileSize(this.handle);
+		//console.log("filesize  "+this.size);
+		if (cb)	cb.call(this);
 	}
-	ksanagap.log("opening"+path);
+
 	this.handle=fs.openSync(path);
 	this.opened=true;
 	setupapi.call(this);
+	return this;
 }
 
 module.exports=Open;
@@ -6752,7 +6841,8 @@ var _search=function(engine,q,opts,cb) {
 		opts.q=q;
 		$kse.search(opts,cb);
 	} else {//nw or brower
-		return require("./search")(engine,q,opts,cb);		
+		var dosearch=require("./search");
+		return dosearch(engine,q,opts,cb);		
 	}
 }
 
@@ -6801,6 +6891,7 @@ if (typeof nodeRequire=='undefined')var nodeRequire=require;
 var pool={},localPool={};
 var apppath="";
 var bsearch=require("./bsearch");
+var strsep="\uffff";
 var _getSync=function(keys,recursive) {
 	var out=[];
 	for (var i in keys) {
@@ -6932,16 +7023,15 @@ var getDocument=function(filename,markups,cb){
 	}
 }
 var createLocalEngine=function(kdb,cb,context) {
-	var engine={lastAccess:new Date(), kdb:kdb, queryCache:{}, postingCache:{}, cache:{}};
-
-	if (kdb.fs.html5fs) {
+	var engine={kdb:kdb, queryCache:{}, postingCache:{}, cache:{}};
+	if ((kdb.fs && kdb.fs.html5fs) || typeof ksanagap!="undefined") {
 		var customfunc=Require("ksana-document").customfunc;
 	} else {
-		var customfunc=nodeRequire("ksana-document").customfunc;	
+		var customfunc=nodeRequire("ksana-document").customfunc;		
 	}	
+
 	if (typeof context=="object") engine.context=context;
 	engine.get=function(key,recursive,cb) {
-
 		if (typeof recursive=="function") {
 			cb=recursive;
 			recursive=false;
@@ -6950,13 +7040,8 @@ var createLocalEngine=function(kdb,cb,context) {
 			if (cb) cb(null);
 			return null;
 		}
-
 		if (typeof cb!="function") {
-			if (kdb.fs.html5fs) {
-				return engine.kdb.get(key,recursive,cb);
-			} else {
-				return engine.kdb.getSync(key,recursive);
-			}
+			return engine.kdb.get(key,recursive);
 		}
 
 		if (typeof key=="string") {
@@ -6969,6 +7054,7 @@ var createLocalEngine=function(kdb,cb,context) {
 			cb(null);	
 		}
 	};	
+
 	engine.fileOffset=fileOffset;
 	engine.folderOffset=folderOffset;
 	engine.pageOffset=pageOffset;
@@ -6976,7 +7062,9 @@ var createLocalEngine=function(kdb,cb,context) {
 	engine.getFilePageNames=getFilePageNames;
 	engine.getFilePageOffsets=getFilePageOffsets;
 	//only local engine allow getSync
-	if (!kdb.fs.html5fs)	engine.getSync=engine.kdb.getSync;
+	if (kdb.fs.getSync) {
+		engine.getSync=engine.kdb.getSync;
+	}
 	var preload=[["meta"],["fileNames"],["fileOffsets"],
 	["tokens"],["postingslen"],["pageNames"],["pageOffsets"]];
 
@@ -7013,7 +7101,7 @@ var getRemote=function(key,recursive,cb) {
 	if (key[0] instanceof Array) { //multiple keys
 		var keys=[],output=[];
 		for (var i=0;i<key.length;i++) {
-			var cachekey=key[i].join("\0");
+			var cachekey=key[i].join(strsep);
 			var data=engine.cache[cachekey];
 			if (typeof data!="undefined") {
 				keys.push(null);//  place holder for LINE 28
@@ -7031,7 +7119,7 @@ var getRemote=function(key,recursive,cb) {
 			//merge the server result with cached 
 			for (var i=0;i<output.length;i++) {
 				if (datum[i] && keys[i]) {
-					var cachekey=keys[i].join("\0");
+					var cachekey=keys[i].join(strsep);
 					engine.cache[cachekey]=datum[i];
 					output[i]=datum[i];
 				}
@@ -7039,7 +7127,7 @@ var getRemote=function(key,recursive,cb) {
 			cb.apply(engine.context,[output]);	
 		});
 	} else { //single key
-		var cachekey=key.join("\0");
+		var cachekey=key.join(strsep);
 		var data=engine.cache[cachekey];
 		if (typeof data!="undefined") {
 			if (cb) cb.apply(engine.context,[data]);
@@ -7095,7 +7183,7 @@ var createEngine=function(kdbid,context,cb) {
 	//var link=Require("./link");
 	var customfunc=Require("ksana-document").customfunc;
 	var $kse=Require("ksanaforge-kse").$ksana; 
-	var engine={lastAccess:new Date(), kdbid:kdbid, cache:{} , 
+	var engine={kdbid:kdbid, cache:{} , 
 	postingCache:{}, queryCache:{}, traffic:0,fetched:0};
 	engine.setContext=function(ctx) {this.context=ctx};
 	engine.get=getRemote;
@@ -7165,19 +7253,8 @@ var open=function(kdbid,cb,context) {
 	pool[kdbid]=engine;
 	return engine;
 }
-var openLocalNode=function(kdbid,cb,context) {
-	var fs=nodeRequire('fs');
-	var Kdb=nodeRequire('ksana-document').kdb;
-	var engine=localPool[kdbid];
-	if (engine) {
-		if (cb) cb(engine);
-		return engine;
-	}
-
-	var kdbfn=kdbid;
-	if (kdbfn.indexOf(".kdb")==-1) kdbfn+=".kdb";
-
-	var tries=["./"+kdbfn  //TODO , allow any depth
+var getLocalTries=function(kdbfn) {
+	return ["./"+kdbfn  //TODO , allow any depth
 	           ,apppath+"/"+kdbfn,
 	           ,apppath+"/ksana_databases/"+kdbfn
 	           ,apppath+"/"+kdbfn,
@@ -7189,6 +7266,48 @@ var openLocalNode=function(kdbid,cb,context) {
 	           ,"../../../"+kdbfn
 	           ,"../../../ksana_databases/"+kdbfn
 	           ];
+}
+var openLocalKsanagap=function(kdbid,cb,context) {
+	var engine=localPool[kdbid];
+	if (engine) {
+		if (cb) cb.apply(context||engine.context,[engine]);
+		return engine;
+	}
+
+	var Kdb=Require('ksana-document').kdb;
+	var kdbfn=kdbid;
+	if (kdbfn.indexOf(".kdb")==-1) kdbfn+=".kdb";
+
+	var tries=getLocalTries(kdbfn);
+
+	for (var i=0;i<tries.length;i++) {
+		if (fs.existsSync(tries[i])) {
+			//console.log("kdb path: "+nodeRequire('path').resolve(tries[i]));
+			var kdb=new Kdb(tries[i]);
+			createLocalEngine(kdb,function(engine){
+				localPool[kdbid]=engine;
+				cb.apply(context||engine.context,[engine]);
+			},context);
+			return null;
+		}
+	}
+	if (cb) cb(null);
+	return null;
+
+}
+var openLocalNode=function(kdbid,cb,context) {
+	var fs=nodeRequire('fs');
+	var engine=localPool[kdbid];
+	if (engine) {
+		if (cb) cb.apply(context||engine.context,[engine]);
+		return engine;
+	}
+
+	var Kdb=nodeRequire('ksana-document').kdb;
+	var kdbfn=kdbid;
+	if (kdbfn.indexOf(".kdb")==-1) kdbfn+=".kdb";
+
+	var tries=getLocalTries(kdbfn);
 
 	for (var i=0;i<tries.length;i++) {
 		if (fs.existsSync(tries[i])) {
@@ -7226,10 +7345,14 @@ var openLocalHtml5=function(kdbid,cb,context) {
 }
 //omit cb for syncronize open
 var openLocal=function(kdbid,cb,context)  {
-	if (kdbid.indexOf("filesystem:")>-1 || typeof process=="undefined") {
-		openLocalHtml5(kdbid,cb,context);
+	if (typeof ksanagap=="undefined") {
+		if (kdbid.indexOf("filesystem:")>-1 || typeof process=="undefined") {
+			openLocalHtml5(kdbid,cb,context);
+		} else {
+			openLocalNode(kdbid,cb,context);
+		}		
 	} else {
-		openLocalNode(kdbid,cb,context);
+		openLocalKsanagap(kdbid,cb,context);
 	}
 }
 var setPath=function(path) {
@@ -7597,10 +7720,8 @@ var newQuery =function(engine,query,opts) {
 	return Q;
 }
 var loadPostings=function(engine,terms,cb) {
-	//
 	var tokens=engine.get("tokens");
 	   //var tokenIds=terms.map(function(t){return tokens[t.key]});
-
 	var tokenIds=terms.map(function(t){ return 1+tokens.indexOf(t.key)});
 	var postingid=[];
 	for (var i=0;i<tokenIds.length;i++) {
@@ -7676,7 +7797,7 @@ var phrase_intersect=function(engine,Q) {
 	}
 	Q.rawresult=out;
 	countFolderFile(Q);
-	console.log(emptycount,hashit);
+	//console.log(emptycount,hashit);
 }
 var countFolderFile=function(Q) {
 	Q.fileWithHitCount=0;
@@ -7688,7 +7809,6 @@ var countFolderFile=function(Q) {
 var main=function(engine,q,opts,cb){
 	if (typeof opts=="function") cb=opts;
 	opts=opts||{};
-	
 	var Q=engine.queryCache[q];
 	if (!Q) Q=newQuery(engine,q,opts);
 	if (!Q) {
@@ -7696,15 +7816,13 @@ var main=function(engine,q,opts,cb){
 		else cb({rawresult:[]});
 		return;
 	};
-
 	engine.queryCache[q]=Q;
-	
 	loadPostings(engine,Q.terms,function(){
-	
 		if (!Q.phrases[0].posting) {
 			cb.apply(engine.context,[{rawresult:[]}]);
 			return;			
 		}
+		
 		if (!Q.phrases[0].posting.length) { //
 			Q.phrases.forEach(loadPhrase.bind(Q));
 		}
@@ -7714,7 +7832,8 @@ var main=function(engine,q,opts,cb){
 			phrase_intersect(engine,Q);
 		}
 		var fileOffsets=Q.engine.get("fileOffsets");
-		
+		//console.log("search opts "+JSON.stringify(opts));
+
 		if (!Q.byFile && Q.rawresult && !opts.nogroup) {
 			Q.byFile=plist.groupbyposting2(Q.rawresult, fileOffsets);
 			Q.byFile.shift();Q.byFile.pop();
@@ -7722,15 +7841,15 @@ var main=function(engine,q,opts,cb){
 
 			countFolderFile(Q);
 		}
+
 		if (opts.range) {
-			excerpt.resultlist(engine,Q,opts,function(data) {
+			excerpt.resultlist(engine,Q,opts,function(data) { 
+				//console.log("excerpt ok");
 				Q.excerpt=data;
-				if (engine.context) cb.apply(engine.context,[Q]);
-				else cb(Q);
+				cb.apply(engine.context,[Q]);
 			});
 		} else {
-			if (engine.context) cb.apply(engine.context,[Q]);
-			else cb(Q);
+			cb.apply(engine.context,[Q]);
 		}		
 	});
 }
@@ -13468,20 +13587,20 @@ var filelist = React.createClass({displayName: 'filelist',
 	updatable:function(f) {
         	var classes="btn btn-warning";
         	if (this.state.downloading) classes+=" disabled";
-		if (f.hasUpdate) return React.DOM.button( {className:classes, 
-			'data-filename':f.filename,  'data-url':f.url,
-	            onClick:this.download}
-	       , "Update")
+		if (f.hasUpdate) return React.DOM.button({className: classes, 
+			'data-filename': f.filename, 'data-url': f.url, 
+	            onClick: this.download
+	       }, "Update")
 		else return null;
 	},
 	showLocal:function(f) {
         var classes="btn btn-danger";
         if (this.state.downloading) classes+=" disabled";
-	  return React.DOM.tr(null, React.DOM.td(null, f.filename),
-	      React.DOM.td(null),
-	      React.DOM.td( {className:"pull-right"}, 
-	      this.updatable(f),React.DOM.button( {className:classes, 
-	               onClick:this.deleteFile, 'data-filename':f.filename}, "Delete")
+	  return React.DOM.tr(null, React.DOM.td(null, f.filename), 
+	      React.DOM.td(null), 
+	      React.DOM.td({className: "pull-right"}, 
+	      this.updatable(f), React.DOM.button({className: classes, 
+	               onClick: this.deleteFile, 'data-filename': f.filename}, "Delete")
 	        
 	      )
 	  )
@@ -13489,13 +13608,13 @@ var filelist = React.createClass({displayName: 'filelist',
 	showRemote:function(f) { 
 	  var classes="btn btn-warning";
 	  if (this.state.downloading) classes+=" disabled";
-	  return (React.DOM.tr( {'data-id':f.filename}, React.DOM.td(null, 
-	      f.filename),
-	      React.DOM.td(null, f.desc),
+	  return (React.DOM.tr({'data-id': f.filename}, React.DOM.td(null, 
+	      f.filename), 
+	      React.DOM.td(null, f.desc), 
 	      React.DOM.td(null, 
-	      React.DOM.span( {'data-filename':f.filename,  'data-url':f.url,
-	            className:classes,
-	            onClick:this.download}, "Download")
+	      React.DOM.span({'data-filename': f.filename, 'data-url': f.url, 
+	            className: classes, 
+	            onClick: this.download}, "Download")
 	      )
 	  ));
 	},
@@ -13543,50 +13662,50 @@ var filelist = React.createClass({displayName: 'filelist',
 	      var progress=Math.round(this.state.progress*100);
 	      return (
 	      	React.DOM.div(null, 
-	      	"Downloading from ", this.state.url,
-	      React.DOM.div(  {key:"progress", className:"progress col-md-8"}, 
-	          React.DOM.div( {className:"progress-bar", role:"progressbar", 
-	              'aria-valuenow':progress, 'aria-valuemin':"0", 
-	              'aria-valuemax':"100", style:{width: progress+"%"}}, 
-	            progress,"%"
+	      	"Downloading from ", this.state.url, 
+	      React.DOM.div({key: "progress", className: "progress col-md-8"}, 
+	          React.DOM.div({className: "progress-bar", role: "progressbar", 
+	              'aria-valuenow': progress, 'aria-valuemin': "0", 
+	              'aria-valuemax': "100", style: {width: progress+"%"}}, 
+	            progress, "%"
 	          )
-	        ),
-	        React.DOM.button( {onClick:this.abortdownload, 
-	        	className:"btn btn-danger col-md-4"}, "Abort")
+	        ), 
+	        React.DOM.button({onClick: this.abortdownload, 
+	        	className: "btn btn-danger col-md-4"}, "Abort")
 	        )
 	        );
 	      } else {
 	      		if ( this.allFilesReady() ) {
-	      			return React.DOM.button( {onClick:this.dismiss, className:"btn btn-success"}, "Ok")
+	      			return React.DOM.button({onClick: this.dismiss, className: "btn btn-success"}, "Ok")
 	      		} else return null;
 	      		
 	      }
 	},
 	showUsage:function() {
 		var percent=this.props.remainPercent;
-           return (React.DOM.div(null, React.DOM.span( {className:"pull-left"}, "Usage:"),React.DOM.div( {className:"progress"}, 
-		  React.DOM.div( {className:"progress-bar progress-bar-success progress-bar-striped", role:"progressbar",  style:{width: percent+"%"}}, 
+           return (React.DOM.div(null, React.DOM.span({className: "pull-left"}, "Usage:"), React.DOM.div({className: "progress"}, 
+		  React.DOM.div({className: "progress-bar progress-bar-success progress-bar-striped", role: "progressbar", style: {width: percent+"%"}}, 
 		    	percent+"%"
 		  )
 		)));
 	},
 	render:function() {
 	  	return (
-		React.DOM.div( {ref:"dialog1", className:"modal fade", 'data-backdrop':"static"}, 
-		    React.DOM.div( {className:"modal-dialog"}, 
-		      React.DOM.div( {className:"modal-content"}, 
-		        React.DOM.div( {className:"modal-header"}, 
-		          React.DOM.h4( {className:"modal-title"}, "File Installer")
-		        ),
-		        React.DOM.div( {className:"modal-body"}, 
-		        	React.DOM.table( {className:"table"}, 
+		React.DOM.div({ref: "dialog1", className: "modal fade", 'data-backdrop': "static"}, 
+		    React.DOM.div({className: "modal-dialog"}, 
+		      React.DOM.div({className: "modal-content"}, 
+		        React.DOM.div({className: "modal-header"}, 
+		          React.DOM.h4({className: "modal-title"}, "File Installer")
+		        ), 
+		        React.DOM.div({className: "modal-body"}, 
+		        	React.DOM.table({className: "table"}, 
 		        	React.DOM.tbody(null, 
 		          	this.props.files.map(this.showFile)
 		          	)
 		          )
-		        ),
-		        React.DOM.div( {className:"modal-footer"}, 
-		        	this.showUsage(),
+		        ), 
+		        React.DOM.div({className: "modal-footer"}, 
+		        	this.showUsage(), 
 		           this.showProgress()
 		        )
 		      )
@@ -13649,12 +13768,12 @@ var filemanager = React.createClass({displayName: 'filemanager',
 	},
 	onQuoteOk:function(quota,usage) {
 		if (typeof ksanagap!="undefined") {
-			console.log("onquoteok");
+			//console.log("onquoteok");
 			this.setState({noupdate:true,missing:[],files:[],autoclose:true
-				,quota:quota,remain:quota-usage});
+				,quota:quota,remain:quota-usage,usage:usage});
 			return;
 		}
-		console.log("quote ok");
+		//console.log("quote ok");
 		var files=this.genFileList(html5fs.files,this.missingKdb());
 		var that=this;
 		that.checkIfUpdate(files,function(hasupdate) {
@@ -13719,17 +13838,17 @@ var filemanager = React.createClass({displayName: 'filemanager',
 	},
 	render:function(){
     		if (!this.state.browserReady) {   
-      			return checkbrowser( {feature:"fs", onReady:this.onBrowserOk})
+      			return checkbrowser({feature: "fs", onReady: this.onBrowserOk})
     		} if (!this.state.quota || this.state.remain<this.state.requireSpace) {  
     			var quota=this.state.requestQuota;
     			if (this.state.usage+this.state.requireSpace>quota) {
     				quota=(this.state.usage+this.state.requireSpace)*1.5;
     			}
-      			return htmlfs( {quota:quota, autoclose:"true", onReady:this.onQuoteOk})
+      			return htmlfs({quota: quota, autoclose: "true", onReady: this.onQuoteOk})
       		} else {
 			if (!this.state.noupdate || this.missingKdb().length || !this.state.autoclose) {
 				var remain=Math.round((this.state.usage/this.state.quota)*100);				
-				return filelist( {action:this.action, files:this.state.files, remainPercent:remain})
+				return filelist({action: this.action, files: this.state.files, remainPercent: remain})
 			} else {
 				setTimeout( this.dismiss ,0);
 				return React.DOM.span(null, "Success");
@@ -13785,19 +13904,19 @@ var checkbrowser = React.createClass({displayName: 'checkbrowser',
 			return React.DOM.div(null, m);
 		}
 		return (
-		 React.DOM.div( {ref:"dialog1", className:"modal fade", 'data-backdrop':"static"}, 
-		    React.DOM.div( {className:"modal-dialog"}, 
-		      React.DOM.div( {className:"modal-content"}, 
-		        React.DOM.div( {className:"modal-header"}, 
-		          React.DOM.button( {type:"button", className:"close", 'data-dismiss':"modal", 'aria-hidden':"true"}, "×"),
-		          React.DOM.h4( {className:"modal-title"}, "Browser Check")
-		        ),
-		        React.DOM.div( {className:"modal-body"}, 
-		          React.DOM.p(null, "Sorry but the following feature is missing"),
+		 React.DOM.div({ref: "dialog1", className: "modal fade", 'data-backdrop': "static"}, 
+		    React.DOM.div({className: "modal-dialog"}, 
+		      React.DOM.div({className: "modal-content"}, 
+		        React.DOM.div({className: "modal-header"}, 
+		          React.DOM.button({type: "button", className: "close", 'data-dismiss': "modal", 'aria-hidden': "true"}, "×"), 
+		          React.DOM.h4({className: "modal-title"}, "Browser Check")
+		        ), 
+		        React.DOM.div({className: "modal-body"}, 
+		          React.DOM.p(null, "Sorry but the following feature is missing"), 
 		          this.state.missing.map(showMissing)
-		        ),
-		        React.DOM.div( {className:"modal-footer"}, 
-		          React.DOM.button( {onClick:this.downloadbrowser, type:"button", className:"btn btn-primary"}, "Download Google Chrome")
+		        ), 
+		        React.DOM.div({className: "modal-footer"}, 
+		          React.DOM.button({onClick: this.downloadbrowser, type: "button", className: "btn btn-primary"}, "Download Google Chrome")
 		        )
 		      )
 		    )
@@ -13839,18 +13958,18 @@ var htmlfs = React.createClass({displayName: 'htmlfs',
 	},
 	welcome:function() {
 		return (
-		React.DOM.div( {ref:"dialog1", className:"modal fade", id:"myModal", 'data-backdrop':"static"}, 
-		    React.DOM.div( {className:"modal-dialog"}, 
-		      React.DOM.div( {className:"modal-content"}, 
-		        React.DOM.div( {className:"modal-header"}, 
-		          React.DOM.h4( {className:"modal-title"}, "Welcome")
-		        ),
-		        React.DOM.div( {className:"modal-body"}, 
+		React.DOM.div({ref: "dialog1", className: "modal fade", id: "myModal", 'data-backdrop': "static"}, 
+		    React.DOM.div({className: "modal-dialog"}, 
+		      React.DOM.div({className: "modal-content"}, 
+		        React.DOM.div({className: "modal-header"}, 
+		          React.DOM.h4({className: "modal-title"}, "Welcome")
+		        ), 
+		        React.DOM.div({className: "modal-body"}, 
 		          "Browser will ask for your confirmation."
-		        ),
-		        React.DOM.div( {className:"modal-footer"}, 
-		          React.DOM.button( {onClick:this.initFilesystem, type:"button", 
-		            className:"btn btn-primary"}, "Initialize File System")
+		        ), 
+		        React.DOM.div({className: "modal-footer"}, 
+		          React.DOM.button({onClick: this.initFilesystem, type: "button", 
+		            className: "btn btn-primary"}, "Initialize File System")
 		        )
 		      )
 		    )
@@ -13860,26 +13979,26 @@ var htmlfs = React.createClass({displayName: 'htmlfs',
 	renderDefault:function(){
 		var used=Math.floor(this.state.usage/this.state.quota *100);
 		var more=function() {
-			if (used>50) return React.DOM.button( {type:"button", className:"btn btn-primary"}, "Allocate More");
+			if (used>50) return React.DOM.button({type: "button", className: "btn btn-primary"}, "Allocate More");
 			else null;
 		}
 		return (
-		React.DOM.div( {ref:"dialog1", className:"modal fade", id:"myModal", 'data-backdrop':"static"}, 
-		    React.DOM.div( {className:"modal-dialog"}, 
-		      React.DOM.div( {className:"modal-content"}, 
-		        React.DOM.div( {className:"modal-header"}, 
-		          React.DOM.h4( {className:"modal-title"}, "Sandbox File System")
-		        ),
-		        React.DOM.div( {className:"modal-body"}, 
-		          React.DOM.div( {className:"progress"}, 
-		            React.DOM.div( {className:"progress-bar", role:"progressbar", style:{width: used+"%" }}, 
-		               used,"%"
+		React.DOM.div({ref: "dialog1", className: "modal fade", id: "myModal", 'data-backdrop': "static"}, 
+		    React.DOM.div({className: "modal-dialog"}, 
+		      React.DOM.div({className: "modal-content"}, 
+		        React.DOM.div({className: "modal-header"}, 
+		          React.DOM.h4({className: "modal-title"}, "Sandbox File System")
+		        ), 
+		        React.DOM.div({className: "modal-body"}, 
+		          React.DOM.div({className: "progress"}, 
+		            React.DOM.div({className: "progress-bar", role: "progressbar", style: {width: used+"%"}}, 
+		               used, "%"
 		            )
-		          ),
+		          ), 
 		          React.DOM.span(null, this.state.quota, " total , ", this.state.usage, " in used")
-		        ),
-		        React.DOM.div( {className:"modal-footer"}, 
-		          React.DOM.button( {onClick:this.dismiss, type:"button", className:"btn btn-default", 'data-dismiss':"modal"}, "Close"),         
+		        ), 
+		        React.DOM.div({className: "modal-footer"}, 
+		          React.DOM.button({onClick: this.dismiss, type: "button", className: "btn btn-default", 'data-dismiss': "modal"}, "Close"), 
 		          more()
 		        )
 		      )
@@ -13995,8 +14114,8 @@ var stackview = React.createClass({displayName: 'stackview',
     }
   },
   renderView:function(v) { 
-    return React.DOM.div( {className:"viewdiv"}, 
-      this.props.view({name:v.name,extra:this.props.extra(v.name),action:this.action,text:v.content}),
+    return React.DOM.div({className: "viewdiv"}, 
+      this.props.view({name:v.name,extra:this.props.extra(v.name),action:this.action,text:v.content}), 
       React.DOM.hr(null)
     )
     //return <div className="splitterPane" dangerouslySetInnerHTML={{__html:v.content}}></div>
@@ -14014,7 +14133,7 @@ var stackview = React.createClass({displayName: 'stackview',
     return this.props.views.map(this.renderView);
   },  
   render: function() {
-    return React.DOM.div( {className:"stackview"}, 
+    return React.DOM.div({className: "stackview"}, 
       this.createNestedView()
     )
   }
@@ -14305,25 +14424,25 @@ var markupdialogmixin = {
   },
   confirmButton:function() {
     if (this.state.edit) {
-      return React.DOM.button( {type:"button", className:"btn btn-default", onClick:this._save}, "Save")
+      return React.DOM.button({type: "button", className: "btn btn-default", onClick: this._save}, "Save")
     } else {
-      return React.DOM.button( {type:"button", className:"btn btn-default", onClick:this._create}, "Create")
+      return React.DOM.button({type: "button", className: "btn btn-default", onClick: this._create}, "Create")
     }
   },
   renderDialog:function(body) {
     return (
-        React.DOM.div( {className:this.state.className}, 
-          React.DOM.div( {className:"modal-dialog"}, 
-            React.DOM.div( {className:"modal-content"}, 
-              React.DOM.div( {className:"modal-header"}, 
-                React.DOM.button( {type:"button", className:"close", 'aria-hidden':"true", onClick:this._cancel}, "\u2716"),
-                React.DOM.h4( {className:"modal-title"}, this.props.title)
-              ),
-              React.DOM.div( {className:"modal-body"}, 
+        React.DOM.div({className: this.state.className}, 
+          React.DOM.div({className: "modal-dialog"}, 
+            React.DOM.div({className: "modal-content"}, 
+              React.DOM.div({className: "modal-header"}, 
+                React.DOM.button({type: "button", className: "close", 'aria-hidden': "true", onClick: this._cancel}, "\u2716"), 
+                React.DOM.h4({className: "modal-title"}, this.props.title)
+              ), 
+              React.DOM.div({className: "modal-body"}, 
                 body()
-              ),
-              React.DOM.div( {className:"modal-footer"}, 
-                React.DOM.button( {type:"button", className:"btn btn-default", onClick:this._cancel}, "Close"),
+              ), 
+              React.DOM.div({className: "modal-footer"}, 
+                React.DOM.button({type: "button", className: "btn btn-default", onClick: this._cancel}, "Close"), 
                 this.confirmButton()
               )
             )
@@ -14340,7 +14459,7 @@ require.register("pncdemo-main/index.js", function(exports, require, module){
 /* to rename the component, change name of ./component.js and  "dependencies" section of ../../component.js */
 Require("bootstrap");
 var contextmenu=Require("contextmenu");
-var stackview=Require("stackview"); 
+var viewer=Require("viewer"); 
 var textview=Require("textview");
 var controlpanel=Require("controlpanel");
 var markuppanel=Require("markuppanel");
@@ -14398,7 +14517,11 @@ var main = React.createClass({displayName: 'main',
   componentDidMount:function() {
     if (detectmob()) {
       this.getDOMNode().classList.add("noselect");
+      this.getDOMNode().classList.add("mobile");  
+    } else {
+      this.getDOMNode().classList.add("desktop");
     }
+
   },
   viewExtra:function(name) {
     var match=[];
@@ -14505,21 +14628,21 @@ var main = React.createClass({displayName: 'main',
       rightcol=right[0].cols||rightcol;
     } 
     return (
-      React.DOM.div( {id:"main"},  
-        controlpanel( {action:this.action}),
-        markuppanel( {action:this.action}),
-        this.state.markupdialog?this.state.markupdialog({ref:"markupdialog",action:this.action,type:this.state.markuptype,title:this.state.markupdialog_title}):null,
+      React.DOM.div({id: "main"}, 
+        controlpanel({action: this.action}), 
+        markuppanel({action: this.action}), 
+        this.state.markupdialog?this.state.markupdialog({ref:"markupdialog",action:this.action,type:this.state.markuptype,title:this.state.markupdialog_title}):null, 
         React.DOM.div(null, 
-        hoverMenu( {action:this.action, 
-          readonly:!this.state.markuptype,
-          markup:this.state.hoverMarkup, target:this.state.hoverToken, 
-          editable:this.state.markupeditable, x:this.state.x, y:this.state.y}), 
-        React.DOM.div( {className:"views"}, 
-        React.DOM.div( {className:"col-md-"+leftcol}, 
-          stackview( {view:textview, action:this.action, views:left, extra:this.viewExtra}  )
-        ),
-        React.DOM.div( {className:"col-md-"+rightcol}, 
-          stackview( {view:textview, action:this.action, views:right, extra:this.viewExtra} )
+        hoverMenu({action: this.action, 
+          readonly: !this.state.markuptype, 
+          markup: this.state.hoverMarkup, target: this.state.hoverToken, 
+          editable: this.state.markupeditable, x: this.state.x, y: this.state.y}), 
+        React.DOM.div({className: "views"}, 
+        React.DOM.div({className: "col-md-"+leftcol}, 
+          viewer({view: textview, action: this.action, views: left, extra: this.viewExtra})
+        ), 
+        React.DOM.div({className: "col-md-"+rightcol}, 
+          viewer({view: textview, action: this.action, views: right, extra: this.viewExtra})
         )
         )
         )
@@ -14655,7 +14778,7 @@ var comp1 = React.createClass({displayName: 'comp1',
   render: function() {
     return (
       React.DOM.div(null, 
-        "Hello,",this.state.bar
+        "Hello,", this.state.bar
       )
     );
   }
@@ -15011,13 +15134,13 @@ var textview = React.createClass({displayName: 'textview',
   render: function() {
     return (
       React.DOM.div(null, 
-        React.DOM.div( {className:"textview", 
-          onTouchStart:this.touchStart,
-          onTouchMove:this.touchMove,
-          onTouchEnd:this.touchEnd,
-          onMouseUp:this.mouseUp,
-          onMouseOut:this.mouseOut,
-          onMouseMove:this.mouseMove, dangerouslySetInnerHTML:{__html:this.toXML(this.props.text)}}
+        React.DOM.div({className: "textview", 
+          onTouchStart: this.touchStart, 
+          onTouchMove: this.touchMove, 
+          onTouchEnd: this.touchEnd, 
+          onMouseUp: this.mouseUp, 
+          onMouseOut: this.mouseOut, 
+          onMouseMove: this.mouseMove, dangerouslySetInnerHTML: {__html:this.toXML(this.props.text)}}
         )
       )
     );
@@ -15078,9 +15201,9 @@ require.register("pncdemo-contextmenu/index.js", function(exports, require, modu
 /* to rename the component, change name of ./component.js and  "dependencies" section of ../../component.js */
 var contextmenu=React.createClass({displayName: 'contextmenu',
   renderItem:function(item,idx) {
-      return React.DOM.li( {key:"k"+idx}, 
-        React.DOM.a( {role:"menuitem", tabIndex:"-1", href:"#", 'data-i':idx, 
-        onMouseUp:this.itemClicked}, item.caption)
+      return React.DOM.li({key: "k"+idx}, 
+        React.DOM.a({role: "menuitem", tabIndex: "-1", href: "#", 'data-i': idx, 
+        onMouseUp: this.itemClicked}, item.caption)
       );
       //don't know why but onClick doesn't work
       //dispatchListeners == null
@@ -15102,9 +15225,9 @@ var contextmenu=React.createClass({displayName: 'contextmenu',
     }
   },
   render:function() {
-    return React.DOM.div( {className:"dropdown", ref:"menu"}, 
-    React.DOM.ul( {className:"dropdown-menu", role:"menu"}, 
-      React.DOM.li( {role:"presentation", className:"dropdown-header"}, this.props.payload.header),
+    return React.DOM.div({className: "dropdown", ref: "menu"}, 
+    React.DOM.ul({className: "dropdown-menu", role: "menu"}, 
+      React.DOM.li({role: "presentation", className: "dropdown-header"}, this.props.payload.header), 
       this.props.menuitems.map(this.renderItem,this)
     )
     )
@@ -15133,23 +15256,16 @@ require.register("pncdemo-markuppanel/index.js", function(exports, require, modu
 /** @jsx React.DOM */
 
 /* to rename the component, change name of ./component.js and  "dependencies" section of ../../component.js */
-var markups=[
-   {caption:"Overview",type:null,dialog: Require("markoverview")} //nothing happen
-  ,{caption:"Person", type:"person", dialog: Require("marksimple")  } //immediate single view markup
-  ,{caption:"Place", type:"place", dialog: Require("marksimple")  } //immediate single view markup
-  ,{caption:"Footnote", type:"footnote",dialog:Require("markfootnote"),editable:true}  //single view dialog markup
-  ,{caption:"Footnote2", type:"footnote2",dialog:Require("markfootnote"),editable:true}  //single view dialog markup
-  ,{caption:"Correspondance",type:"correspond",dialog:Require("markcorrespond")} //dual view markup
-  ,{caption:"Intertext",type:"intertext",dialog:Require("markintertext"),editable:true} //dual view dialog markup
-];
 
+var default_markups=require("./tagset_default");
+var news_markups=require("./tagset_news");
 var markuppanel = React.createClass({displayName: 'markuppanel',
   getInitialState: function() {
-    return {bar: "world", markups:markups, selected:this.props.mode||0};
+    return {bar: "world", markups:default_markups, selected:this.props.mode||0};
   },
   activateMarkup:function(e) {
-    var n=e.target.dataset['n'];
-    var m=markups[n];
+    var n=e.target.dataset['n']; 
+    var m=this.state.markups[n];
     this.props.action("setMarkupDialog",{type:m.type,dialog:m.dialog, title:m.caption,editable:m.editable});
     this.setState({selected:n});
   },
@@ -15160,25 +15276,67 @@ var markuppanel = React.createClass({displayName: 'markuppanel',
       extra=" active";
       color="btn-primary";
     }
-    return React.DOM.label( {key:"b"+idx, ref:"b"+idx, className:"btn "+color+extra}, 
-      React.DOM.input( {onChange:this.activateMarkup, type:"radio", name:"markup",
-      checked:idx==this.state.selected, 'data-n':idx}),m.caption
+    return React.DOM.label({key: "b"+idx, ref: "b"+idx, className: "btn "+color+extra}, 
+      React.DOM.input({onChange: this.activateMarkup, type: "radio", name: "markup", 
+      checked: idx==this.state.selected, 'data-n': idx}), m.caption
     )
   },
+  selectset:function(e) {
+    var name=e.target.dataset["tagset"];
+    var newtagset=require("./tagset_"+name);
+    this.setState({markups:newtagset});
+  },
+  renderTagset:function() {
+    return (
+      React.DOM.div({className: "btn-group pull-right"}, 
+        React.DOM.button({type: "button", className: "btn btn-default dropdown-toggle", 'data-toggle': "dropdown"}, 
+        "TagSet ", React.DOM.span({className: "caret"})
+        ), 
+        React.DOM.ul({onClick: this.selectset, className: "dropdown-menu", role: "menu"}, 
+          React.DOM.li(null, React.DOM.a({href: "#", 'data-tagset': "default"}, "Default")), 
+          React.DOM.li(null, React.DOM.a({href: "#", 'data-tagset': "news"}, "News "))
+        )
+      )
+      );
+  },  
   render: function() { 
     return (
       React.DOM.div(null, 
-      React.DOM.div(  {className:"btn-group"}, 
+      React.DOM.div({className: "btn-group"}, 
         this.state.markups.map(this.renderMarkupButtons,this)
-      )
+      ), 
+      this.renderTagset()
       )
     );
   } 
 });
-markuppanel.defaultDialog=markups[0].dialog;
+//markuppanel.defaultDialog=this.state.markups[0].dialog;
 
 module.exports=markuppanel;
 
+});
+require.register("pncdemo-markuppanel/tagset_default.js", function(exports, require, module){
+module.exports=[
+   {caption:"View",type:null,dialog: Require("markoverview")} //nothing happen
+  ,{caption:"Important", type:"important", dialog: Require("marksimple")  } //immediate single view markup
+  ,{caption:"Footnote", type:"footnote",dialog:Require("markfootnote"),editable:true}  //single view dialog markup
+  ,{caption:"Footnote2", type:"footnote2",dialog:Require("markfootnote"),editable:true}  //single view dialog markup
+  ,{caption:"Correspondance",type:"correspond",dialog:Require("markcorrespond")} //dual view markup
+  ,{caption:"Intertext",type:"intertext",dialog:Require("markintertext"),editable:true} //dual view dialog markup
+];
+});
+require.register("pncdemo-markuppanel/tagset_news.js", function(exports, require, module){
+module.exports=[
+   {caption:"View",type:null,dialog: Require("markoverview")} //nothing happen
+  ,{caption:"Why", type:"why", dialog: Require("marksimple")  } 
+  ,{caption:"What", type:"what", dialog: Require("marksimple")  } 
+  ,{caption:"Where", type:"where", dialog: Require("marksimple")  } 
+  ,{caption:"When", type:"when",dialog:Require("marksimple")}  
+  ,{caption:"Who", type:"who",dialog:Require("marksimple")} 
+  ,{caption:"How",type:"how",dialog:Require("marksimple")} 
+  ,{caption:"Note", type:"footnote",dialog:Require("markfootnote"),editable:true}  //single view dialog markup
+  ,{caption:"Intertext",type:"intertext",dialog:Require("markintertext"),editable:true} //dual view dialog markup
+];
 });
 require.register("pncdemo-hovermenu/index.js", function(exports, require, module){
 /** @jsx React.DOM */
@@ -15197,10 +15355,10 @@ var hovermenu = React.createClass({displayName: 'hovermenu',
     this.props.action("deleteMarkup");
   },
   renderEditButton:function() {//invoke the dialog
-    return React.DOM.button( {onClick:this.editMarkup, className:"btn btn-sm btn-primary"}, React.DOM.span( {className:"glyphicon glyphicon-pencil"}))
+    return React.DOM.button({onClick: this.editMarkup, className: "btn btn-sm btn-primary"}, React.DOM.span({className: "glyphicon glyphicon-pencil"}))
   },
   renderDeleteButton:function() {
-    return React.DOM.button( {onClick:this.deleteMarkup, className:"btn btn-sm btn-danger"}, React.DOM.span( {className:"glyphicon glyphicon-remove"}));
+    return React.DOM.button({onClick: this.deleteMarkup, className: "btn btn-sm btn-danger"}, React.DOM.span({className: "glyphicon glyphicon-remove"}));
   },
   renderContent:function() {
     var content="";
@@ -15212,9 +15370,9 @@ var hovermenu = React.createClass({displayName: 'hovermenu',
   //{"\u2716"}  remove
   render: function() {
     return ( 
-      React.DOM.div( {className:"hovermenu"},  
-        this.props.readonly?this.renderContent():null,
-        !this.props.readonly?this.renderDeleteButton():null,
+      React.DOM.div({className: "hovermenu"}, 
+        this.props.readonly?this.renderContent():null, 
+        !this.props.readonly?this.renderDeleteButton():null, 
         this.props.editable?this.renderEditButton():null
       )
     );
@@ -15253,7 +15411,7 @@ var marksimple = React.createClass({displayName: 'marksimple',
   mixins: [Require("markupdialogmixin")],
   execute:function(opts) {
     this.props.action("applyMarkup",{type:this.props.type,selections:opts.selections});
-  },
+  }, 
   render: function() {
     return null;
   }
@@ -15326,7 +15484,7 @@ var markfootnote = React.createClass({displayName: 'markfootnote',
   }, 
   renderBody:function() {
     return React.DOM.div(null, 
-    React.DOM.textarea( {ref:"content", className:"form-control"})
+    React.DOM.textarea({ref: "content", className: "form-control"})
     )   
   }, 
   onShow:function() {
@@ -15403,8 +15561,8 @@ var markintertext = React.createClass({displayName: 'markintertext',
   }, 
   renderBody:function() {
     return React.DOM.div(null, 
-    "Linktype:",React.DOM.input( {ref:"linktype", className:"input form-control"}),
-    "Description:",React.DOM.textarea( {ref:"content", className:"form-control"})
+    "Linktype:", React.DOM.input({ref: "linktype", className: "input form-control"}), 
+    "Description:", React.DOM.textarea({ref: "content", className: "form-control"})
     )   
   }, 
   onShow:function() {
@@ -15443,13 +15601,13 @@ var controlpanel = React.createClass({displayName: 'controlpanel',
   },
   renderDataset:function() {
     return (
-      React.DOM.div( {className:"btn-group pull-right"}, 
-        React.DOM.button( {type:"button", className:"btn btn-default dropdown-toggle", 'data-toggle':"dropdown"}, 
-        "Dataset ", React.DOM.span( {className:"caret"})
-        ),
-        React.DOM.ul( {onClick:this.selectset, className:"dropdown-menu", role:"menu"}, 
-          React.DOM.li(null, React.DOM.a( {href:"#", 'data-name':"yijing"}, "YiJing")),
-          React.DOM.li(null, React.DOM.a( {href:"#", 'data-name':"mn118"}, "Ānāpānasatisuttaṁ " ))
+      React.DOM.div({className: "btn-group pull-right"}, 
+        React.DOM.button({type: "button", className: "btn btn-default dropdown-toggle", 'data-toggle': "dropdown"}, 
+        "Dataset ", React.DOM.span({className: "caret"})
+        ), 
+        React.DOM.ul({onClick: this.selectset, className: "dropdown-menu", role: "menu"}, 
+          React.DOM.li(null, React.DOM.a({href: "#", 'data-name': "yijing"}, "YiJing")), 
+          React.DOM.li(null, React.DOM.a({href: "#", 'data-name': "mn118"}, "Ānāpānasatisuttaṁ "))
         )
       )
       );
@@ -15457,8 +15615,8 @@ var controlpanel = React.createClass({displayName: 'controlpanel',
   render: function() {
     return (
       React.DOM.div(null, 
-        React.DOM.button( {onClick:this.save, className:"btn btn-success pull-right"}, "Save"),
-        React.DOM.button( {onClick:this.reset, className:"btn btn-danger pull-right"}, "Reset"),
+        React.DOM.button({onClick: this.save, className: "btn btn-success pull-right"}, "Save"), 
+        React.DOM.button({onClick: this.reset, className: "btn btn-danger pull-right"}, "Reset"), 
         this.renderDataset()
       )
     );
@@ -15496,10 +15654,74 @@ var mn118=[[
 ];
 module.exports=mn118;
 });
+require.register("pncdemo-viewer/index.js", function(exports, require, module){
+/** @jsx React.DOM */
+
+/* to rename the component, change name of ./component.js and  "dependencies" section of ../../component.js */
+
+//var othercomponent=Require("other"); 
+var textnavigator=React.createClass({displayName: 'textnavigator',
+  next:function() {
+    this.props.action("next");
+  },
+  prev:function() {
+    this.props.action("prev");
+  },
+  render:function(){
+    if (!this.props.view) return React.DOM.div(null)
+    return (
+      React.DOM.div(null, 
+        React.DOM.button({onClick: this.prev, className: "btn btn-default"}, "Prev"), 
+        this.props.view.name, 
+        React.DOM.button({onClick: this.next, className: "btn btn-default"}, "Next")
+      )
+    )
+
+  }
+});
+var viewer = React.createClass({displayName: 'viewer',
+  getInitialState: function() {
+    return {bar: "world", cur:0 };
+  },
+  renderView:function() {
+    if (!this.props.views.length)return React.DOM.div(null);
+    var v=this.props.views[this.state.cur];
+    return this.props.view({
+      action:this.props.action
+      ,extra:this.props.extra(v.name)
+      ,text:v.content
+    });
+  },
+  action:function() {
+    var args = [];
+    Array.prototype.push.apply( args, arguments );
+    var action=args.shift();
+    var opts=args[0];
+    var cur=this.state.cur;
+    if (action=="next") {
+      if (cur<this.props.views.length-1) this.setState({cur:cur+1});
+    } else if (action=="prev"){
+      if (cur>0) this.setState({cur:cur-1});
+    }
+  },
+  render: function() {
+    var v=this.props.views[this.state.cur];
+    return (
+      React.DOM.div(null, 
+        textnavigator({action: this.action, view: v}), 
+        this.renderView()
+      )
+    );
+  }
+});
+module.exports=viewer;
+});
 require.register("pncdemo/index.js", function(exports, require, module){
 var boot=require("boot");
 boot("pncdemo","main","main");
 });
+
+
 
 
 
@@ -15649,6 +15871,8 @@ require.alias("pncdemo-contextmenu/index.js", "pncdemo/deps/contextmenu/index.js
 require.alias("pncdemo-contextmenu/index.js", "contextmenu/index.js");
 require.alias("pncdemo-contextmenu/index.js", "pncdemo-contextmenu/index.js");
 require.alias("pncdemo-markuppanel/index.js", "pncdemo/deps/markuppanel/index.js");
+require.alias("pncdemo-markuppanel/tagset_default.js", "pncdemo/deps/markuppanel/tagset_default.js");
+require.alias("pncdemo-markuppanel/tagset_news.js", "pncdemo/deps/markuppanel/tagset_news.js");
 require.alias("pncdemo-markuppanel/index.js", "pncdemo/deps/markuppanel/index.js");
 require.alias("pncdemo-markuppanel/index.js", "markuppanel/index.js");
 require.alias("pncdemo-markuppanel/index.js", "pncdemo-markuppanel/index.js");
@@ -15682,6 +15906,10 @@ require.alias("pncdemo-controlpanel/mn118.js", "pncdemo/deps/controlpanel/mn118.
 require.alias("pncdemo-controlpanel/index.js", "pncdemo/deps/controlpanel/index.js");
 require.alias("pncdemo-controlpanel/index.js", "controlpanel/index.js");
 require.alias("pncdemo-controlpanel/index.js", "pncdemo-controlpanel/index.js");
+require.alias("pncdemo-viewer/index.js", "pncdemo/deps/viewer/index.js");
+require.alias("pncdemo-viewer/index.js", "pncdemo/deps/viewer/index.js");
+require.alias("pncdemo-viewer/index.js", "viewer/index.js");
+require.alias("pncdemo-viewer/index.js", "pncdemo-viewer/index.js");
 require.alias("pncdemo/index.js", "pncdemo/index.js");
 if (typeof exports == 'object') {
   module.exports = require('pncdemo');

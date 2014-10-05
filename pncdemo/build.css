@@ -7153,6 +7153,8 @@ td.visible-print {
     -webkit-touch-callout: none;
     -webkit-user-select: none; /* Disable selection/copy in UIWebView */
 }
+.mobile {font-size:200%;}
+.desktop {font-size:150%;}
 .views {overflow:auto;height:90%;}
 .comp1 {}
 .textview {line-height:150%;}
@@ -7177,6 +7179,16 @@ td.visible-print {
 .markperson {}
 .markup_person {border-bottom:solid 2px brown;}
 .markup_place {border-bottom:solid 2px green;}
+
+
+.markup_what {border-bottom:dashed 2px blue;}
+.markup_where {border-bottom:solid 2px green;}
+.markup_when {border-bottom:dotted 2px red;}
+.markup_who {border-bottom:solid 2px pink;}
+.markup_how {border-bottom:dotted 2px brown;}
+.markup_why {border-bottom:solid 2px gray;}
+
+.markup_important {border-bottom:solid 2px red;}
 .markcorrespond {}
 .markup_correspond {border-bottom: 1px solid blue;}
 .markfootnote {}
@@ -7198,4 +7210,5 @@ td.visible-print {
 .markintertext {}
 .markup_intertext {border-bottom: 1px solid green;}
 .controlpanel {}
+.viewer {}
 #main {}

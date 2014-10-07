@@ -6726,74 +6726,79 @@ require.register("ksana-document/kdbfs_ksanagap.js", function(exports, require, 
 	array and buffer return in string format
 	need JSON.parse
 */
+var verbose=1;
+
 var readSignature=function(pos,cb) {
-	//console.log("read signature");
-	var signature=fs.readStringSync(this.handle,pos,1);
-	//console.log(signature);
+	//console.debug("read signature");
+	var signature=kfs.readString(this.handle,pos,1);
+	//console.debug(signature,signature.charCodeAt(0));
 	cb.apply(this,[signature]);
 }
 var readI32=function(pos,cb) {
-	//console.log("read i32");
-	var i32=fs.readInt32Sync(this.handle,pos);
-	//console.log(i32);
+	//console.debug("read i32");
+	var i32=kfs.readInt32(this.handle,pos);
+	//console.debug(i32);
 	cb.apply(this,[i32]);	
 }
 var readUI32=function(pos,cb) {
-	//console.log("read ui32");
-	var ui32=fs.readUInt32Sync(this.handle,pos);
-	//console.log(ui32);
+	//console.debug("read ui32");
+	var ui32=kfs.readUInt32(this.handle,pos);
+	//console.debug(ui32);
 	cb.apply(this,[ui32]);
 }
 var readUI8=function(pos,cb) {
-	//console.log("read ui8"); 
-	var ui8=fs.readUInt8Sync(this.handle,pos);
-	//console.log("ui8="+ui8);
+	//console.debug("read ui8"); 
+	var ui8=kfs.readUInt8(this.handle,pos);
+	//console.debug(ui8);
 	cb.apply(this,[ui8]);
 }
 var readBuf=function(pos,blocksize,cb) {
-	//console.log("read buffer");
-	var buf=fs.readBufSync(this.handle,pos,blocksize);
+	//console.debug("read buffer");
+	var buf=kfs.readBuf(this.handle,pos,blocksize);
 	var buff=JSON.parse(buf);
-	//console.log(buff);
+	//console.debug("buffer length"+buff.length);
 	cb.apply(this,[buff]);	
 }
 var readBuf_packedint=function(pos,blocksize,count,reset,cb) {
-	//console.log("read packed int3");
-	var buf=fs.readBufSync_packedint(this.handle,pos,blocksize,count,reset);
+	//console.debug("read packed int, blocksize "+blocksize);
+	var buf=kfs.readBuf_packedint(this.handle,pos,blocksize,count,reset);
 	var adv=parseInt(buf);
 	var buff=JSON.parse(buf.substr(buf.indexOf("[")));
-	//console.log(buff.length);
+	//console.debug("packedInt length "+buff.length+" first item="+buff[0]);
 	cb.apply(this,[{data:buff,adv:adv}]);	
 }
 
 
 var readString= function(pos,blocksize,encoding,cb) {
-	//console.log("readstring"+blocksize+" "+encoding);
-	var str=fs.readEncodedStringSync(this.handle,pos,blocksize,encoding);
-	//console.log(str);
+	//console.debug("readstring"+blocksize+" "+encoding);
+	var str=kfs.readEncodedString(this.handle,pos,blocksize,encoding);
+	if (str.length>10) {
+		str=str.substring(0,10)+"...";
+	}
+	//console.debug(str);
 	cb.apply(this,[str]);	
 }
 
 var readFixedArray = function(pos ,count, unitsize,cb) {
-	//console.log("read fixed array"); 
-	var buf=fs.readFixedArraySync(this.handle,pos,count,unitsize);
+	//console.debug("read fixed array"); 
+	var buf=kfs.readFixedArray(this.handle,pos,count,unitsize);
 	var buff=JSON.parse(buf);
-	//console.log(buff.length);
+	//console.debug("array length"+buff.length);
 	cb.apply(this,[buff]);	
 }
 var readStringArray = function(pos,blocksize,encoding,cb) {
 	//console.log("read String array "+blocksize +" "+encoding); 
 
-	var buf=fs.readStringArraySync(this.handle,pos,blocksize,encoding);
+	var buf=kfs.readStringArray(this.handle,pos,blocksize,encoding);
 	//var buff=JSON.parse(buf);
-	//console.log(buf);
+	//console.debug("read string array");
 	var buff=buf.split("\uffff"); //cannot return string with 0
-	//console.log(buff.length);
+	//console.debug("array length"+buff.length);
 	cb.apply(this,[buff]);	
 }
 var free=function() {
 	////console.log('closing ',handle);
-	fs.closeSync(this.handle);
+	kfs.close(this.handle);
 }
 var Open=function(path,opts,cb) {
 	opts=opts||{};
@@ -6810,12 +6815,12 @@ var Open=function(path,opts,cb) {
 		this.readStringArray=readStringArray;
 		this.signature_size=signature_size;
 		this.free=free;
-		this.size=fs.getFileSize(this.handle);
+		this.size=kfs.getFileSize(this.handle);
 		//console.log("filesize  "+this.size);
 		if (cb)	cb.call(this);
 	}
 
-	this.handle=fs.openSync(path);
+	this.handle=kfs.open(path);
 	this.opened=true;
 	setupapi.call(this);
 	return this;
@@ -14384,14 +14389,13 @@ var markupdialogmixin = {
     if (this.state.immediate) { //immediate execution
       this.execute.apply(this,arguments);
     } else {
-      this.setState({edit:false});
+      this.setState({edit:false,markup:null});
       this.show();
     }
   },
-  edit:function(markup) {
-    if (this.loadMarkup) this.loadMarkup(markup);
-    else console.error("missing loadMarkup");
-    this.setState({edit:true});
+  edit:function(markup,options) {
+    this.opts={options:options};
+    this.setState({edit:true,markup:markup});
     this.show();
   },
   show: function() {
@@ -14483,18 +14487,21 @@ function detectmob() {
 }
 var main = React.createClass({displayName: 'main',
   selection_menuitems:function() {
-    return [
+    return [ 
       //{caption:"Add",handler:this.addSelection, previousView:null}
     ]
   },
   getInitialState: function() {
+    this.markupchanged={}; 
+    this.allmarkupchanged=false;
     React.initializeTouchEvents(true);
     return {
      // menuitems:this.selection_menuitems(),
       menupayload:{}
       ,markupdialog:markuppanel.defaultDialog
-      ,markuptype:null
+      ,markuptag:null
     };
+
   },
   clearMarkup:function(opts,idx) {
     //console.log("clearMarkup");
@@ -14506,6 +14513,8 @@ var main = React.createClass({displayName: 'main',
   },
   componentDidUpdate:function() {
     this.deletinggid=null;
+    this.markupchanged={};
+    this.allmarkupchanged=false;
   },
   loadMarkups:function(views) {
     var keys=[];
@@ -14523,7 +14532,7 @@ var main = React.createClass({displayName: 'main',
     }
 
   },
-  viewExtra:function(name) {
+  getViewExtra:function(name,instance) {
     var match=[];
     if (this.state.bulk) match=this.state.bulk.filter(function(m){
       return (m._id==name);
@@ -14531,8 +14540,16 @@ var main = React.createClass({displayName: 'main',
     var markups=[];
     if (match.length) markups=match[0].markups;
     var views=[];
-    var readonly=!this.state.markuptype;
-    return {markuptype:this.state.markuptype, hovergid:this.state.hovergid,deletinggid:this.deletinggid, markups: markups , readonly:readonly};
+    var appendable=false;
+    if (this.refs.markupdialog) {
+      appendable=!!this.refs.markupdialog.appendable;
+    }
+    var readonly=!this.state.markuptag;
+    return {markuptag:this.state.markuptag, 
+      appendable:appendable,
+      hovergid:this.state.hovergid,deletinggid:this.deletinggid, 
+      markups: markups , readonly:readonly, 
+      markupchanged:(!!this.markupchanged[name] || this.allmarkupchanged) };
   },
   getMenuPayload:function(opts) {
     return {
@@ -14550,10 +14567,28 @@ var main = React.createClass({displayName: 'main',
   createMarkup:function() {
     var M=this.refs.markupdialog;
     if (!M) return;
-    M.activate({selections:selections.get()});
+    M.activate({selections:selections.get(), options:this.state.markupopts});
   },
   updateSelection:function(view,ranges) {
     selections.update(view,ranges);
+  },
+  hoveringToken:function(opts) {
+  if (this.state.hoverToken!=opts.token || this.state.hoverMarkup!=opts.markup) {
+      //do not show hover menu for shadow markup
+      if (opts.markup) {
+        var gid=null;
+        if (opts.markup[3] &&opts.markup[3].gid) gid=opts.markup[3].gid;
+        if ((opts.markup[3] && opts.markup[3].shadow)){
+          this.setState({activeView:opts.view,hoverMarkup:opts.markup,hovergid:gid,hoverToken:null}); //set hoverToken to null so that  show hover menu is hidden
+        } else {
+          this.setState({activeView:opts.view, x:opts.x, y:opts.y,
+            hoverMarkup:opts.markup,hoverToken:opts.token,hovergid:gid});
+        }          
+      } else {
+        this.setState({hoverMarkup:null,hoverToken:null,hovergid:null});
+      }
+    }
+    this.allmarkupchanged=true;
   },
   action: function() {
     var args = [];
@@ -14565,28 +14600,14 @@ var main = React.createClass({displayName: 'main',
       this.updateSelection(opts.view,opts.ranges);
       if (action=="selection") this.createMarkup();
     } else if (action=="hoverToken") {
-      if (this.state.hoverToken!=opts.token ||
-          this.state.hoverMarkup!=opts.markup) {
-        //do not show hover menu for shadow markup
-        if (opts.markup) {
-          var gid=null;
-          if (opts.markup[3] &&opts.markup[3].gid) gid=opts.markup[3].gid;
-
-          if ((opts.markup[3] && opts.markup[3].shadow)){
-            this.setState({activeView:opts.view,hoverMarkup:opts.markup,hovergid:gid,hoverToken:null}); //set hoverToken to null so that  show hover menu is hidden
-          } else {
-            this.setState({activeView:opts.view, x:opts.x, y:opts.y,
-              hoverMarkup:opts.markup,hoverToken:opts.token,hovergid:gid});
-          }          
-        } else {
-          this.setState({hoverMarkup:null,hoverToken:null,hovergid:null});
-        }
-      }
+      this.hoveringToken(opts);
     } else if (action=="setMarkupDialog") {
-      this.setState({markupdialog:opts.dialog, markuptype:opts.type,markupdialog_title:opts.title,markupeditable:opts.editable});
+      this.setState({markupopts:opts,markupdialog:opts.dialog, markuptag:opts.tag});
       this.setState({hoverToken:null,hoverMarkup:null});
+      this.allmarkupchanged=true;
     } else if (action=="clearSelection") {
       selections.clear(opts);
+      this.allmarkupchanged=true;
     } else if (action=="applyMarkup") {
       selections.applyMarkup(opts);
       this.action("clearSelection");
@@ -14600,7 +14621,7 @@ var main = React.createClass({displayName: 'main',
       if (m[3] && m[3].gid) this.deletinggid=m[3].gid;
       this.setState({hoverToken:null,hoverMarkup:null,hovergid:null});
     } else if (action=="editMarkup") {
-      this.refs.markupdialog.edit(this.state.hoverMarkup);
+      this.refs.markupdialog.edit(this.state.hoverMarkup,this.state.markupopts);
       this.setState({hoverToken:null,hoverMarkup:null});
     } else if (action=="markupSaved") {
       this.state.activeView.action("markupSaved");
@@ -14609,10 +14630,17 @@ var main = React.createClass({displayName: 'main',
       persistent.saveMarkups(this.state.bulk);
     } else if (action=="resetMarkups") {
       persistent.resetMarkups(this.state.bulk);
+      this.allmarkupchanged=true;
       this.forceUpdate();
     } else if (action=="dataset") {
       this.setState({views:opts});
       this.loadMarkups(opts);
+    } else if (action=="markupApplyable") {
+      if (this.refs.markupdialog && this.refs.markupdialog.allow) {
+        var sels=selections.get();
+        return this.refs.markupdialog.allow({selections:sels});
+      }
+      return false;
     }
   },
 
@@ -14627,22 +14655,23 @@ var main = React.createClass({displayName: 'main',
       right=this.state.views[1];
       rightcol=right[0].cols||rightcol;
     } 
+    var markupeditable=this.refs.markupdialog && this.refs.markupdialog.editable;
     return (
       React.DOM.div({id: "main"}, 
         controlpanel({action: this.action}), 
         markuppanel({action: this.action}), 
-        this.state.markupdialog?this.state.markupdialog({ref:"markupdialog",action:this.action,type:this.state.markuptype,title:this.state.markupdialog_title}):null, 
+        this.state.markupdialog?this.state.markupdialog({ref:"markupdialog",action:this.action,tag:this.state.markuptag,title:this.state.markupdialog_title}):null, 
         React.DOM.div(null, 
         hoverMenu({action: this.action, 
-          readonly: !this.state.markuptype, 
+          readonly: !this.state.markuptag, 
           markup: this.state.hoverMarkup, target: this.state.hoverToken, 
-          editable: this.state.markupeditable, x: this.state.x, y: this.state.y}), 
+          editable: markupeditable, x: this.state.x, y: this.state.y}), 
         React.DOM.div({className: "views"}, 
         React.DOM.div({className: "col-md-"+leftcol}, 
-          viewer({view: textview, action: this.action, views: left, extra: this.viewExtra})
+          viewer({view: textview, action: this.action, views: left, getExtra: this.getViewExtra})
         ), 
         React.DOM.div({className: "col-md-"+rightcol}, 
-          viewer({view: textview, action: this.action, views: right, extra: this.viewExtra})
+          viewer({view: textview, action: this.action, views: right, getExtra: this.getViewExtra})
         )
         )
         )
@@ -14668,7 +14697,9 @@ var guid = (function() {
 
 var setGUID=function(opts){ //need guid for multiple range or links
 	if (opts.selections.length>1
-	||opts.selections[0][1].length>1) {
+	|| (opts.selections[0] 
+		&&opts.selections[0].length>1
+		&&opts.selections[0][1].length>1)) {
 	 opts.payload.gid=guid();
 	}
 }
@@ -14678,7 +14709,7 @@ var applyMarkup=function(opts) {
 	opts.selections.map(function(s,idx){
 		var view=s[0], ranges=s[1],py=opts.payload;
 		if (idx>0) py={shadow:true, gid:opts.payload.gid}; //only first selection has payload
-		s[0].action("applyMarkup",opts.type,ranges,py);
+		s[0].action("applyMarkup",opts.tag,ranges,py);
 	});
 }
 
@@ -14692,10 +14723,10 @@ var applyLink=function(opts) {
 	var py=JSON.parse(JSON.stringify(opts.payload));
 	py.target=view1.getName();
 	py.ranges=range2;
-	view1.action("applyMarkup",opts.type,range1,py);	
+	view1.action("applyMarkup",opts.tag,range1,py);	
 
 	var shadowpy={target:view2.getName(), shadow:true, gid:py.gid};
-	view2.action("applyMarkup",opts.type,range2,shadowpy);	
+	view2.action("applyMarkup",opts.tag,range2,shadowpy);	
 }
 
 var clear=function(opts){
@@ -14810,27 +14841,35 @@ var textview = React.createClass({displayName: 'textview',
     this.footNoteCount=0;
   },
   shouldComponentUpdate:function(nextProps,nextState) {
-    if (nextProps.extra.deletinggid) {
-      var newmarkups=this.props.extra.markups.filter(function(m){
-        return !m[3] || nextProps.extra.deletinggid!=m[3].gid;
+    var changed=false;
+    var extra=nextState.extra=nextProps.getExtra(this.props.name,this);
+    if (extra.deletinggid) {
+      var newmarkups=this.state.extra.markups.filter(function(m){
+        return !m[3] || extra.deletinggid!=m[3].gid;
       },this);
       nextState.hoverMarkup=null;
+      changed=true;
       this.setMarkups(newmarkups);
     };
     var textchanged=(nextProps.text!=this.props.text);
     if (textchanged) this.tokenized=null;
-    //return textchanged;
-    return true;
+
+    changed = changed || (extra.hovergid != this.state.extra.hovergid);
+    changed = changed || extra.markupchanged|| this.markupchanged ;
+    changed = changed || (nextState.appendingSelection!=this.state.appendingSelection);
+    nextState.extra.markupchanged=false;
+    this.markupchanged=false;
+    return textchanged || changed;
   },
   getInitialState: function() {
     this.resetCount();
-    return {ranges:[] };
+    this.markupchanged=false;
+    return {ranges:[],extra:{markups:[]}};
   },
   componentWillUpdate:function() {
     this.resetCount();
   },
-  addSelection:function(start,len) {
-    var ranges=this.state.ranges;
+  addSelection:function(ranges,start,len) {
     ranges.push([start-1,len]);
     this.setState({ranges:ranges});
     return ranges;
@@ -14851,34 +14890,26 @@ var textview = React.createClass({displayName: 'textview',
       this.setState({refresh:true,hoverMarkup:null});
     } else if (action=="clearRanges") {
       this.clearRanges();
+      this.markupchanged=true;
     } else if (action=="deleteMarkup") {
       this.setState({hoverMarkup:null});
-      var markups=this.props.extra.markups.filter(function(m){
+      var markups=this.state.extra.markups.filter(function(m){
         return !this.sameMarkup(m,opts);
       },this);
       this.setMarkups(markups);
     }
   },
   setMarkups:function(newmarkups) {
-    var markups=this.props.extra.markups;
+    var markups=this.state.extra.markups;
     markups.splice(0,markups.length);
 
     newmarkups.map(function(m){
       markups.push(m);
     });
+    this.markupchanged=true;
   },
-  clearMarkup:function(type,start) {
-    /*
-    start++;//should remove it in the future
-    var ranges=this.state.ranges.filter(function(r){
-      return ! ((r.type==type) && (start>=r.start && start<r.start+r.len));
-    });
-    this.setState({ranges:ranges});
-    console.log("clear",type,start);
-    */
-  },
-  applyMarkup:function(type,ranges,payload) {
-    var markups=this.props.extra.markups;
+  applyMarkup:function(tag,ranges,payload) {
+    var markups=this.state.extra.markups;
     ranges.map(function(r,idx){
       if (idx==0 && payload) {
         var py=JSON.parse(JSON.stringify(payload));  
@@ -14889,18 +14920,18 @@ var textview = React.createClass({displayName: 'textview',
           py.gid=payload.gid;
         }
       }
-      markups.push([r[0],r[1],type,py]);
+      markups.push([r[0],r[1],tag,py]);
     })
-    this.forceUpdate();
+    this.clearRanges();
   },
   rangeToClasses:function(arr,i,prefix) {
     var out=[];
     arr.map(function(r){
-      var classes="",start=r[0],len=r[1],type=r[2], markuptype=this.props.extra.markuptype;
+      var classes="",start=r[0],len=r[1],tag=r[2], markuptag=this.state.extra.markuptag;
       var baseclass=r[2]||"selected";
       if (prefix) baseclass=prefix+baseclass;
-      var typemissmatch=(markuptype && type && markuptype!=type );
-      if (i>=start && i<start+len && !typemissmatch) {
+      var tagmissmatch=(markuptag && tag && markuptag!=tag );
+      if (i>=start && i<start+len && !tagmissmatch) {
         classes=baseclass;
         if (i==start) classes+=" "+baseclass+"_b";
         if (i==start+len-1) classes+=" "+baseclass+"_e";
@@ -14910,13 +14941,11 @@ var textview = React.createClass({displayName: 'textview',
     return out;
   },
   clearRanges:function() {
-    if (this.state.ranges.length) {
-      this.setState({ranges:[],hoverMarkup:null});
-    }
-    //this.clearWindowSelection();
+    this.setState({ranges:[],hoverMarkup:null});
+    this.markupchanged=true;
   },
   mouseUp:function(e) { 
-    if (this.props.extra.readonly) return;
+    if (this.state.extra.readonly) return;
     if (this.touchstartn>-1) {
       sel={start:this.touchstartn, len:this.touchendn-this.touchstartn+1};
       if (sel.len>10) {
@@ -14926,43 +14955,57 @@ var textview = React.createClass({displayName: 'textview',
     } else {
       var sel=getselection();  
     }
-    if (e && e.ctrlKey && sel && sel.len) {
+
+    if (!sel) return;
+    var markups=this.markupAt(sel.start-1,this.state.extra.markuptag);
+    if (markups.length) {
+        this.props.action("hoverToken",{view:this,token:e.target,x:e.pageX,y:e.pageY,markup:markups[0]});
+        this.setState({hoverMarkup:markups[0]});
+        return;
+    }
+
+    if (e && (e.ctrlKey || this.state.appendingSelection) && sel && sel.len) {
       //var x=e.pageX,y=e.pageY;
-      var ranges=this.addSelection(sel.start,sel.len);
+      var ranges=this.addSelection(this.state.ranges,sel.start,sel.len);
       this.props.action("appendSelection",{ranges:ranges,view:this});
+      this.setState({appendingSelection:false});
     } else {
       if (sel && sel.len) {
-        var ranges=this.addSelection(sel.start,sel.len);
-        this.props.action("selection",{ranges:ranges, view:this});
+        var ranges=this.state.ranges;
+        //clear other selection when markup not applyable
+        if (!this.props.action("markupApplyable")) ranges=[];
+        var ranges=this.addSelection(ranges,sel.start,sel.len);
+        this.props.action("selection",{ranges:ranges, view:this});        
       } else {
         this.props.action("selection",{ranges:null,view:this});
         this.clearRanges();
       }
     }    
+    this.markupchanged=true;
   },
-  markupAt:function(n,type) {
-    return this.props.extra.markups.filter(function(m){
+  markupAt:function(n,tag) {
+    return this.state.extra.markups.filter(function(m){
       var start=m[0],len=m[1];
-      var typemissmatch=(type && m[2]!=type );
+      var typemissmatch=(tag && m[2]!=tag );
       return (n>=start && n<start+len && !typemissmatch);
     });
   },
   extraElement:function(n) {
     var out="";
-    var markups=this.markupAt(n,this.props.extra.markuptype);
+    var markups=this.markupAt(n,this.state.extra.markuptag);
     if (!markups.length) return out;
     markups.map(function(m){
-      var start=m[0],len=m[1],type=m[2],payload=m[3];
+      var start=m[0],len=m[1],tag=m[2],payload=m[3];
       if (!payload || !payload.insert) return;
       if ( (payload.insert=="end" && n==start+len-1)
       || (payload.insert=="start" && n==start) ){
-        if (type.substr(0,8)=="footnote") {
+        if (tag.substr(0,8)=="footnote") {
           this.footNoteCount++;
           var seq=payload.seq||this.footNoteCount;
           //var dataset={className:"extra_"+type,"data-n":n,key:this.extraCount++};
           //out.push(React.DOM.span(dataset,"\u00a0"+seq+"\u00a0"));
           //force 1em space
-          out='<span class="extra_'+type+'" data-n"='+n+'">\u00a0'+seq+'\u00a0</span>';
+          out='<span class="extra_'+tag+'" data-n"='+n+'">\u00a0'+seq+'\u00a0</span>';
         }
       }
     },this);
@@ -14975,7 +15018,7 @@ var textview = React.createClass({displayName: 'textview',
     if (!target) return;
     if (target.nodeName!="SPAN") return;
     var n=parseInt(target.dataset['n']);
-    var markups=this.markupAt(n-1,this.props.extra.markuptype); //n-1 is a workaround
+    var markups=this.markupAt(n-1,this.state.extra.markuptag); //n-1 is a workaround
     if (markups.length) {
       if (this.state.hoverToken!=target) { //do not refresh if hovering on same token
         this.props.action("hoverToken",{view:this,token:target,x:x,y:y,markup:markups[0]});
@@ -15012,10 +15055,10 @@ var textview = React.createClass({displayName: 'textview',
   isHovering:function(i){
     var M=this.state.hoverMarkup;
     var hovering=false;
-    var gid=this.props.extra.hovergid;
+    var gid=this.state.extra.hovergid;
     if (M&&M[3] && M[3].gid) gid=M[3].gid;
     if (gid){ //find same gid with other view
-      this.props.extra.markups.map(function(m){
+      this.state.extra.markups.map(function(m){
         var start=m[0],len=m[1];
         hovering=hovering||
           ((m[3] && m[3].gid==gid) && (i>=start && i<start+len));
@@ -15027,9 +15070,9 @@ var textview = React.createClass({displayName: 'textview',
     }
   },
   getOnScreenMarkups:function(){
-    var markups=this.props.extra.markups;
-    var markuptype=this.props.extra.markuptype;
-    if (markuptype) return markups.filter(function(m){return m[2]==markuptype;});
+    var markups=this.state.extra.markups;
+    var markuptag=this.state.extra.markuptag;
+    if (markuptag) return markups.filter(function(m){return m[2]==markuptag;});
     else return markups;
   },
   toXML:function(s) {
@@ -15041,14 +15084,16 @@ var textview = React.createClass({displayName: 'textview',
     
     for (var i=tokens.length-1;i>=0;i--) {
       var classes="";
-      
       if (tokens[i]=="\n") {
         out='<br/>'+out;
         continue;
       }
-      
       while (mid<M.length && M[mid][1]==i+1) {
         var id=M[mid][0], pos =M[mid][1] ,tagtype=M[mid][2], level=M[mid][3];
+        if (!markups[id]) {
+          console.error("markups id ",id,"not found");
+          continue;
+        }
         var tag=markups[id][2];
         if (tagtype==underlines.TAG_START) out='<span class="markup_'+tag+' lv'+level+'">'+out;
         if (tagtype==underlines.TAG_END) out= '</span>' +out;
@@ -15077,17 +15122,17 @@ var textview = React.createClass({displayName: 'textview',
       this.touchstartx=e.changedTouches[0].pageX;
       this.touchstarty=e.changedTouches[0].pageY;
       this.touchstartelement=e.target;
-      this.range=document.createRange();     
+      //this.range=document.createRange();     
     } else {
-      this.clearSelected();
+      //this.clearSelected();
       this.touchstartn=-1;
-      this.range=null;
-    }
+      //this.range=null;
+    } 
   },
   markSelection:function() {
     var from=this.touchstartn;
     var to=this.touchendn;
-    this.clearSelected();
+    //this.clearSelected();
     for (var i=from;i<=to;i++) {
       var node=$(this.getDOMNode()).find("span[data-n='"+i+"']")[0];
       if (i==from) node.classList.add("selected_b");
@@ -15096,18 +15141,18 @@ var textview = React.createClass({displayName: 'textview',
     }
   },
   touchMove:function(e){
-    if (!this.touchstartn==-1) return;
+    if (!this.touchstartn==-1) return false;
     var T=e.changedTouches[0];
     var rect=e.target.getBoundingClientRect();
     var stopElement=this.findElement(T.pageX,T.pageY);//T.pageX-rect.left, T.pageY-rect.top);
     if (stopElement && stopElement.dataset.n) {
       this.touchendelement=stopElement;
       this.touchendn=stopElement.dataset.n;
-
       this.markSelection();
       //this.range.setStart(this.touchstartelement.firstChild,0);
       //this.range.setEnd(stopElement.firstChild, 1);
     }
+    e.preventDefault();
   },
   getOffset:function (object, offset) {
       if (!object) return;
@@ -15128,16 +15173,32 @@ var textview = React.createClass({displayName: 'textview',
     return stopElement;
   },
   touchEnd:function(e){
-    //console.log(this.touchstartelement,this.touchendelement);
     this.mouseUp(e);
+  }, 
+  touchCancel:function(e) {
+    console.log("touchcancel");
+  },
+  setAppending:function() {
+    this.setState({appendingSelection:true})
+  },
+  renderExtraControls:function() {
+    if (this.state.extra.appendable) {
+      var color="btn-default";
+      if (this.state.appendingSelection) color="btn-primary";
+      return React.DOM.button({onClick: this.setAppending, className: "btn appending "+color}, "Sel ", React.DOM.span({className: "glyphicon glyphicon-plus"}))  
+    } else {
+      return null;
+    }
   },
   render: function() {
     return (
       React.DOM.div(null, 
+        this.renderExtraControls(), 
         React.DOM.div({className: "textview", 
           onTouchStart: this.touchStart, 
           onTouchMove: this.touchMove, 
           onTouchEnd: this.touchEnd, 
+          onTouchCancel: this.touchCancel, 
           onMouseUp: this.mouseUp, 
           onMouseOut: this.mouseOut, 
           onMouseMove: this.mouseMove, dangerouslySetInnerHTML: {__html:this.toXML(this.props.text)}}
@@ -15263,34 +15324,47 @@ var markuppanel = React.createClass({displayName: 'markuppanel',
   getInitialState: function() {
     return {bar: "world", markups:default_markups, selected:this.props.mode||0};
   },
-  activateMarkup:function(e) {
-    var n=e.target.dataset['n']; 
+  activateMarkup:function(n) {
     var m=this.state.markups[n];
-    this.props.action("setMarkupDialog",{type:m.type,dialog:m.dialog, title:m.caption,editable:m.editable});
+    this.props.action("setMarkupDialog",m);
     this.setState({selected:n});
+  },
+  onSelectMarkup:function(e) {
+    var n=e.target.dataset['n']; 
+    this.activateMarkup(n);
   },
   renderMarkupButtons:function(m,idx) {
     var extra="";
     var color="btn-default";
+    var markupcaption=function() {
+      if (m.caption.indexOf("glyphicon-")>-1) {
+        return React.DOM.span({title: m.tag, className: "glyphicon "+m.caption})
+      } else {
+        return m.caption;
+      }
+    }
     if (idx==this.state.selected) {
       extra=" active";
       color="btn-primary";
     }
     return React.DOM.label({key: "b"+idx, ref: "b"+idx, className: "btn "+color+extra}, 
-      React.DOM.input({onChange: this.activateMarkup, type: "radio", name: "markup", 
-      checked: idx==this.state.selected, 'data-n': idx}), m.caption
+      React.DOM.input({onChange: this.onSelectMarkup, type: "radio", name: "markup", 
+      checked: idx==this.state.selected, 'data-n': idx}), 
+      markupcaption()
     )
   },
   selectset:function(e) {
     var name=e.target.dataset["tagset"];
     var newtagset=require("./tagset_"+name);
     this.setState({markups:newtagset});
+    this.activateMarkup(0);
+    //this.props.action("setTagset",name,newtagset);
   },
   renderTagset:function() {
     return (
       React.DOM.div({className: "btn-group pull-right"}, 
         React.DOM.button({type: "button", className: "btn btn-default dropdown-toggle", 'data-toggle': "dropdown"}, 
-        "TagSet ", React.DOM.span({className: "caret"})
+        "TagSet", React.DOM.span({className: "glyphicon glyphicon-bookmark"}), " ", React.DOM.span({className: "caret"})
         ), 
         React.DOM.ul({onClick: this.selectset, className: "dropdown-menu", role: "menu"}, 
           React.DOM.li(null, React.DOM.a({href: "#", 'data-tagset': "default"}, "Default")), 
@@ -15316,26 +15390,33 @@ module.exports=markuppanel;
 
 });
 require.register("pncdemo-markuppanel/tagset_default.js", function(exports, require, module){
-module.exports=[
-   {caption:"View",type:null,dialog: Require("markoverview")} //nothing happen
-  ,{caption:"Important", type:"important", dialog: Require("marksimple")  } //immediate single view markup
-  ,{caption:"Footnote", type:"footnote",dialog:Require("markfootnote"),editable:true}  //single view dialog markup
-  ,{caption:"Footnote2", type:"footnote2",dialog:Require("markfootnote"),editable:true}  //single view dialog markup
-  ,{caption:"Correspondance",type:"correspond",dialog:Require("markcorrespond")} //dual view markup
-  ,{caption:"Intertext",type:"intertext",dialog:Require("markintertext"),editable:true} //dual view dialog markup
+var commentFields=[
+	{name:"extra1",defaultValue:"default e1"}
 ];
+module.exports=[
+   {caption:"glyphicon-eye-open",tag:null,dialog: Require("markoverview")} //nothing happen
+  ,{caption:"glyphicon-pushpin", tag:"important", dialog: Require("marksimple")  } //immediate single view markup
+  ,{caption:"glyphicon-comment", tag:"footnote",dialog:Require("markfootnote")}  //single view dialog markup
+  ,{caption:"glyphicon-comment", tag:"footnote2",dialog:Require("markfootnote"),fields:commentFields}  //single view dialog markup
+  ,{caption:"glyphicon-transfer",tag:"correspond",dialog:Require("markcorrespond")} //dual view markup
+  ,{caption:"glyphicon-link",tag:"intertext",dialog:Require("markintertext")} //dual view dialog markup
+];
+
+/*
+see http://getbootstrap.com/components/#glyphicons for more icons
+*/
 });
 require.register("pncdemo-markuppanel/tagset_news.js", function(exports, require, module){
 module.exports=[
-   {caption:"View",type:null,dialog: Require("markoverview")} //nothing happen
-  ,{caption:"Why", type:"why", dialog: Require("marksimple")  } 
-  ,{caption:"What", type:"what", dialog: Require("marksimple")  } 
-  ,{caption:"Where", type:"where", dialog: Require("marksimple")  } 
-  ,{caption:"When", type:"when",dialog:Require("marksimple")}  
-  ,{caption:"Who", type:"who",dialog:Require("marksimple")} 
-  ,{caption:"How",type:"how",dialog:Require("marksimple")} 
-  ,{caption:"Note", type:"footnote",dialog:Require("markfootnote"),editable:true}  //single view dialog markup
-  ,{caption:"Intertext",type:"intertext",dialog:Require("markintertext"),editable:true} //dual view dialog markup
+   {caption:"glyphicon-eye-open",tag:null,dialog: Require("markoverview")} //nothing happen
+  ,{caption:"Why", tag:"why", dialog: Require("marksimple")  } 
+  ,{caption:"What", tag:"what", dialog: Require("marksimple")  } 
+  ,{caption:"Where", tag:"where", dialog: Require("marksimple")  } 
+  ,{caption:"When", tag:"when",dialog:Require("marksimple")}  
+  ,{caption:"Who", tag:"who",dialog:Require("marksimple")} 
+  ,{caption:"How",tag:"how",dialog:Require("marksimple")} 
+  ,{caption:"glyphicon-comment", tag:"footnote",dialog:Require("markfootnote")}  //single view dialog markup
+  ,{caption:"glyphicon-link",tag:"intertext",dialog:Require("markintertext")} //dual view dialog markup
 ];
 });
 require.register("pncdemo-hovermenu/index.js", function(exports, require, module){
@@ -15362,7 +15443,7 @@ var hovermenu = React.createClass({displayName: 'hovermenu',
   },
   renderContent:function() {
     var content="";
-    if (this.props.markup && this.props.markup[2]) {
+    if (this.props.markup && this.props.markup[3]) {
       content=this.props.markup[3].content;
     }
     return React.DOM.div(null, content)
@@ -15390,7 +15471,9 @@ var hovermenu = React.createClass({displayName: 'hovermenu',
       //console.log(pRect.top,rect.top ,  rect.top-pRect.top);
       dom.style.visibility="visible"; 
       dom.style.left = this.props.x- dom.offsetWidth/2+"px";//this.props.x-dom.offsetWidth/2+"px";
-      dom.style.top  = rect.top+dom.offsetHeight/2+"px";//this.props.y-dom.offsetTop/2+"px";
+      var top=rect.top;
+      if (top==0) top=this.props.y-dom.offsetHeight/2; //workaround, some time getBoundingClientRect return 0
+      dom.style.top  = top+dom.offsetHeight/2+"px";//this.props.y-dom.offsetTop/2+"px";
     } else {
       dom.style.visibility="hidden";
     }
@@ -15410,7 +15493,7 @@ var marksimple = React.createClass({displayName: 'marksimple',
   },
   mixins: [Require("markupdialogmixin")],
   execute:function(opts) {
-    this.props.action("applyMarkup",{type:this.props.type,selections:opts.selections});
+    this.props.action("applyMarkup",{tag:this.props.tag,selections:opts.selections});
   }, 
   render: function() {
     return null;
@@ -15431,8 +15514,9 @@ var markcorrespond = React.createClass({displayName: 'markcorrespond',
   allow:function(opts) {
     return (opts.selections.length==2);//one range
   },
+  appendable:true,
   execute:function(opts) {
-    this.props.action("applyLink",{type:"correspond",
+    this.props.action("applyLink",{tag:"correspond",
             selections:opts.selections,payload:{}});
   },
   render: function() {
@@ -15458,16 +15542,37 @@ var markfootnote = React.createClass({displayName: 'markfootnote',
   execute:function() {
 
   },
+  componentDidUpdate:function() {
+    if (this.state.markup) {
+      this.loadMarkup(this.state.markup);
+    } else {//set default value
+      var fields=this.getFields();
+      fields.map(function(f){
+        this.refs[f.name].getDOMNode().value=f.defaultValue||"";
+      },this);
+    }
+  },
+  editable:true,
   loadMarkup:function(markup) {
     this.editing=markup;
     this.refs.content.getDOMNode().value=markup[3].content;
+    var fields=this.getFields();
+    fields.map(function(f){
+      this.refs[f.name].getDOMNode().value=markup[3][f.name];
+    },this);
   },
   packMarkup:function(opts) {
     opts=opts||{};
     var content=this.refs.content.getDOMNode().value;
+
     var payload={insert:"end",content:content};
+    var fields=this.getFields();
+    fields.map(function(f){
+      payload[f.name]=this.refs[f.name].getDOMNode().value;
+    },this);
+
     this.refs.content.getDOMNode().value="";
-    var args={selections:opts.selections,type:this.props.type,payload:payload};
+    var args={selections:opts.selections,tag:this.props.tag,payload:payload};
     return args;
   },
   create:function(opts) {
@@ -15481,14 +15586,31 @@ var markfootnote = React.createClass({displayName: 'markfootnote',
   },
   cancel:function(opts) {
     this.props.action("clearSelection");
-  }, 
+  },
+  renderField:function(f) {
+    return React.DOM.div({className: "input-group"}, 
+      f.name, React.DOM.input({ref: f.name, className: "input", name: f.name})
+      )
+  },
+  getFields:function() {
+    if (this.opts && this.opts.options && this.opts.options.fields) {
+      return this.opts.options.fields || [];
+    } else return [];
+  },
+  renderExtraFields:function() {
+    var fields=this.getFields();
+    if (!fields.length) return;
+    return fields.map(this.renderField);
+  },
   renderBody:function() {
     return React.DOM.div(null, 
-    React.DOM.textarea({ref: "content", className: "form-control"})
+      React.DOM.textarea({ref: "content", className: "form-control"}), 
+      this.renderExtraFields()
     )   
   }, 
   onShow:function() {
-    this.refs.content.getDOMNode().focus();
+    var first=Object.keys(this.refs)[0];
+    this.refs[first].getDOMNode().focus();
   }, 
   render: function() {
     return this.renderDialog(this.renderBody);
@@ -15523,12 +15645,14 @@ require.register("pncdemo-markintertext/index.js", function(exports, require, mo
 
 var markintertext = React.createClass({displayName: 'markintertext',
   getInitialState: function() {
-     return { type: this.props.type || "intertext"};
+     return { tag: this.props.tag || "intertext"};
   },
   mixins: [Require("markupdialogmixin")],
   allow:function(opts) {
     return (opts.selections.length==2);//two view
-  }, 
+  },
+  appendable:true,
+  editable:true,
   execute:function() {
  
   },
@@ -15544,7 +15668,7 @@ var markintertext = React.createClass({displayName: 'markintertext',
     var payload={insert:"end",content:content,linktype:linktype};
     this.refs.linktype.getDOMNode().value="";
     this.refs.content.getDOMNode().value="";
-    var args={selections:opts.selections,type:this.state.type,payload:payload};
+    var args={selections:opts.selections,tag:this.state.tag,payload:payload};
     return args;
   },
   create:function(opts) {
@@ -15585,12 +15709,22 @@ var dataset={mn118:require("./mn118"),
  
 var controlpanel = React.createClass({displayName: 'controlpanel',
   getInitialState: function() {
-    return {bar: "world"};
+    return {bar: "world", saveCaption:"Save", resetCaption:"Reset"};
   },
   save:function() {
+    var that=this;
+    this.setState({saveCaption:"Saved!!!"});
+    setTimeout(function(){
+      that.setState({saveCaption:"Save"});
+    },3000);
     this.props.action("saveMarkups");
   },
   reset:function() {
+    var that=this;
+    this.setState({resetCaption:"Reset!!!"});
+    setTimeout(function(){
+      that.setState({resetCaption:"Reset"});
+    },3000);    
     this.props.action("resetMarkups");
   },
   selectset:function(e) {
@@ -15604,7 +15738,7 @@ var controlpanel = React.createClass({displayName: 'controlpanel',
     return (
       React.DOM.div({className: "btn-group pull-right"}, 
         React.DOM.button({type: "button", className: "btn btn-default dropdown-toggle", 'data-toggle': "dropdown"}, 
-        "Dataset ", React.DOM.span({className: "caret"})
+        "Dataset ", React.DOM.span({className: "glyphicon glyphicon-folder-open"}), " ", React.DOM.span({className: "caret"})
         ), 
         React.DOM.ul({onClick: this.selectset, className: "dropdown-menu", role: "menu"}, 
           React.DOM.li(null, React.DOM.a({href: "#", 'data-name': "yijing"}, "YiJing")), 
@@ -15617,8 +15751,8 @@ var controlpanel = React.createClass({displayName: 'controlpanel',
   render: function() {
     return (
       React.DOM.div(null, 
-        React.DOM.button({onClick: this.save, className: "btn btn-success pull-right"}, "Save"), 
-        React.DOM.button({onClick: this.reset, className: "btn btn-danger pull-right"}, "Reset"), 
+        React.DOM.button({onClick: this.save, className: "btn btn-success pull-right"}, this.state.saveCaption), 
+        React.DOM.button({onClick: this.reset, className: "btn btn-danger pull-right"}, this.state.resetCaption), 
         this.renderDataset()
       )
     );
@@ -15678,6 +15812,9 @@ require.register("pncdemo-viewer/index.js", function(exports, require, module){
 
 //var othercomponent=Require("other"); 
 var textnavigator=React.createClass({displayName: 'textnavigator',
+  getInitialState:function() {
+    return {appendingSelection:false}
+  },
   next:function() {
     this.props.action("next");
   },
@@ -15686,14 +15823,14 @@ var textnavigator=React.createClass({displayName: 'textnavigator',
   },
   render:function(){
     if (!this.props.view) return React.DOM.div(null);
-    var nextextra="",prevextra="";
-    if (!this.props.buttons.next) nextextra=" disabled";
-    if (!this.props.buttons.prev) prevextra=" disabled";
+    var nextclasses="",prevclasses="";
+    if (!this.props.buttons.next) nextclasses=" disabled";
+    if (!this.props.buttons.prev) prevclasses=" disabled";
     return (
       React.DOM.div(null, 
-        React.DOM.button({onClick: this.prev, className: "btn btn-default"+prevextra}, "Prev"), 
-        this.props.view.name, 
-        React.DOM.button({onClick: this.next, className: "btn btn-default"+nextextra}, "Next")
+        React.DOM.button({onClick: this.prev, className: "btn  btn-default"+prevclasses}, React.DOM.span({className: "glyphicon glyphicon-chevron-left"})), 
+        React.DOM.span({className: "pagetitle"}, this.props.view.name), 
+        React.DOM.button({onClick: this.next, className: "btn  btn-default"+nextclasses}, React.DOM.span({className: "glyphicon glyphicon-chevron-right"}))
       )
     )
 
@@ -15708,7 +15845,8 @@ var viewer = React.createClass({displayName: 'viewer',
     var v=this.props.views[this.state.cur];
     return this.props.view({
       action:this.props.action
-      ,extra:this.props.extra(v.name)
+      ,getExtra:this.props.getExtra
+      ,name:v.name
       ,text:v.content
     });
   },
@@ -15734,7 +15872,7 @@ var viewer = React.createClass({displayName: 'viewer',
     var v=this.props.views[this.state.cur];
     return (
       React.DOM.div(null, 
-        textnavigator({action: this.action, view: v, buttons: buttons}), 
+        textnavigator({getExtra: this.props.getExtra, action: this.action, view: v, buttons: buttons}), 
         this.renderView()
       )
     );

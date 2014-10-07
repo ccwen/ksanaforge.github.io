@@ -14520,7 +14520,8 @@ var main = React.createClass({displayName: 'main',
     var keys=[];
     views.map(function(t){t.map(function(m){keys.push(m.name)})});
     persistent.loadMarkups(keys,function(bulk){
-      this.setState({markupready:true,bulk:bulk});
+      this.allmarkupchanged=true;
+      this.setState({bulk:bulk});
     },this);
   },
   componentDidMount:function() {
@@ -14842,7 +14843,7 @@ var textview = React.createClass({displayName: 'textview',
   },
   shouldComponentUpdate:function(nextProps,nextState) {
     var changed=false;
-    var extra=nextState.extra=nextProps.getExtra(this.props.name,this);
+    var extra=nextState.extra=nextProps.getExtra(nextProps.name,this);
     if (extra.deletinggid) {
       var newmarkups=this.state.extra.markups.filter(function(m){
         return !m[3] || extra.deletinggid!=m[3].gid;
@@ -14856,7 +14857,9 @@ var textview = React.createClass({displayName: 'textview',
 
     changed = changed || (extra.hovergid != this.state.extra.hovergid);
     changed = changed || extra.markupchanged|| this.markupchanged ;
+    changed = changed || extra.markups.length!= this.state.extra.markups.length ;
     changed = changed || (nextState.appendingSelection!=this.state.appendingSelection);
+
     nextState.extra.markupchanged=false;
     this.markupchanged=false;
     return textchanged || changed;
@@ -14864,7 +14867,8 @@ var textview = React.createClass({displayName: 'textview',
   getInitialState: function() {
     this.resetCount();
     this.markupchanged=false;
-    return {ranges:[],extra:{markups:[]}};
+    var extra=this.props.getExtra(this.props.name,this);
+    return {ranges:[],extra:extra};
   },
   componentWillUpdate:function() {
     this.resetCount();

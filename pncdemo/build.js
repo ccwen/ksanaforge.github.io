@@ -14879,12 +14879,11 @@ module.exports={clear:clear,update:update,get:get,applyMarkup:applyMarkup,applyL
 require.register("pncdemo-main/persistent.js", function(exports, require, module){
 var dbname="pncdemo";
 
-//var db=new PouchDB(dbname);
-if (window.location.host.substring(0,9)=="127.0.0.1"){
+//if (window.location.host.substring(0,9)=="127.0.0.1"){
     var db=new Pouchdb(dbname);
-} else {
-    var db=new PouchDB('http://114.34.238.149:5984/'+dbname);
-}
+//} else {
+//    var db=new PouchDB('http://114.34.238.149:5984/'+dbname);
+//}
 
 
 var loadMarkups=function(keys,cb,context){

@@ -4838,10 +4838,17 @@ require.register("ksana-document/kdb.js", function(exports, require, module){
 
   
 */
+var Kfs=null;
+
 if (typeof ksanagap=="undefined") {
-	var Kfs=require('./kdbfs');		
+	Kfs=require('./kdbfs');		
 } else {
-	var Kfs=require("./kdbfs_ksanagap");
+	if (ksanagap.platform=="ios") {
+		Kfs=require("./kdbfs_ios");
+	} else {
+		Kfs=require("./kdbfs_android");
+	}
+		
 }
 
 
@@ -6720,7 +6727,7 @@ var API={
 
   module.exports=API;
 });
-require.register("ksana-document/kdbfs_ksanagap.js", function(exports, require, module){
+require.register("ksana-document/kdbfs_android.js", function(exports, require, module){
 /*
   JAVA can only return Number and String
 	array and buffer return in string format
@@ -6730,7 +6737,7 @@ var verbose=1;
 
 var readSignature=function(pos,cb) {
 	//console.debug("read signature");
-	var signature=kfs.readString(this.handle,pos,1);
+	var signature=kfs.readUTF8String(this.handle,pos,1);
 	//console.debug(signature,signature.charCodeAt(0));
 	cb.apply(this,[signature]);
 }
@@ -6771,10 +6778,11 @@ var readBuf_packedint=function(pos,blocksize,count,reset,cb) {
 
 var readString= function(pos,blocksize,encoding,cb) {
 	//console.debug("readstring"+blocksize+" "+encoding);
-	var str=kfs.readEncodedString(this.handle,pos,blocksize,encoding);
-	if (str.length>10) {
-		str=str.substring(0,10)+"...";
-	}
+	if (encoding=="ucs2") {
+		var str=kfs.readULE16String(this.handle,pos,blocksize);
+	} else {
+		var str=kfs.readUTF8String(this.handle,pos,blocksize);	
+	}	 
 	//console.debug(str);
 	cb.apply(this,[str]);	
 }
@@ -6788,13 +6796,114 @@ var readFixedArray = function(pos ,count, unitsize,cb) {
 }
 var readStringArray = function(pos,blocksize,encoding,cb) {
 	//console.log("read String array "+blocksize +" "+encoding); 
-
+	encoding = encoding||"utf8";
 	var buf=kfs.readStringArray(this.handle,pos,blocksize,encoding);
 	//var buff=JSON.parse(buf);
 	//console.debug("read string array");
 	var buff=buf.split("\uffff"); //cannot return string with 0
 	//console.debug("array length"+buff.length);
 	cb.apply(this,[buff]);	
+}
+var free=function() {
+	////console.log('closing ',handle);
+	kfs.close(this.handle);
+}
+var Open=function(path,opts,cb) {
+	opts=opts||{};
+	var signature_size=1;
+	var setupapi=function() { 
+		this.readSignature=readSignature;
+		this.readI32=readI32;
+		this.readUI32=readUI32;
+		this.readUI8=readUI8;
+		this.readBuf=readBuf;
+		this.readBuf_packedint=readBuf_packedint;
+		this.readFixedArray=readFixedArray;
+		this.readString=readString;
+		this.readStringArray=readStringArray;
+		this.signature_size=signature_size;
+		this.free=free;
+		this.size=kfs.getFileSize(this.handle);
+		//console.log("filesize  "+this.size);
+		if (cb)	cb.call(this);
+	}
+
+	this.handle=kfs.open(path);
+	this.opened=true;
+	setupapi.call(this);
+	return this;
+}
+
+module.exports=Open;
+});
+require.register("ksana-document/kdbfs_ios.js", function(exports, require, module){
+/*
+  JSContext can return all Javascript types.
+*/
+var verbose=1;
+
+var readSignature=function(pos,cb) {
+	//console.debug("read signature");
+	var signature=kfs.readUTF8String(this.handle,pos,1);
+	//console.debug(signature,signature.charCodeAt(0));
+	cb.apply(this,[signature]);
+}
+var readI32=function(pos,cb) {
+	//console.debug("read i32");
+	var i32=kfs.readInt32(this.handle,pos);
+	//console.debug(i32);
+	cb.apply(this,[i32]);	
+}
+var readUI32=function(pos,cb) {
+	//console.debug("read ui32");
+	var ui32=kfs.readUInt32(this.handle,pos);
+	//console.debug(ui32);
+	cb.apply(this,[ui32]);
+}
+var readUI8=function(pos,cb) {
+	//console.debug("read ui8"); 
+	var ui8=kfs.readUInt8(this.handle,pos);
+	//console.debug(ui8);
+	cb.apply(this,[ui8]);
+}
+var readBuf=function(pos,blocksize,cb) {
+	//console.debug("read buffer");
+	var buf=kfs.readBuf(this.handle,pos,blocksize);
+	//console.debug("buffer length"+buff.length);
+	cb.apply(this,[buf]);	
+}
+var readBuf_packedint=function(pos,blocksize,count,reset,cb) {
+	//console.debug("read packed int, blocksize "+blocksize);
+	var buf=kfs.readBuf_packedint(this.handle,pos,blocksize,count,reset);
+	cb.apply(this,[buf]);
+}
+
+
+var readString= function(pos,blocksize,encoding,cb) {
+	//console.debug("readstring"+blocksize+" "+encoding);
+	if (encoding=="ucs2") {
+		var str=kfs.readULE16String(this.handle,pos,blocksize);
+	} else {
+		var str=kfs.readUTF8String(this.handle,pos,blocksize);	
+	}
+	//console.debug(str);
+	cb.apply(this,[str]);	
+}
+
+var readFixedArray = function(pos ,count, unitsize,cb) {
+	//console.debug("read fixed array"); 
+	var buf=kfs.readFixedArray(this.handle,pos,count,unitsize);
+	cb.apply(this,[buf]);	
+}
+var readStringArray = function(pos,blocksize,encoding,cb) {
+	//console.log("read String array "+blocksize +" "+encoding); 
+	encoding = encoding||"utf8";
+	var buf=kfs.readStringArray(this.handle,pos,blocksize,encoding);
+	//var buff=JSON.parse(buf);
+	//console.debug("read string array");
+	//var buff=buf.split("\uffff"); //cannot return string with 0
+	//console.debug("array length"+buff.length);
+	cb.apply(this,[buf]);	
 }
 var free=function() {
 	////console.log('closing ',handle);
@@ -14768,9 +14877,18 @@ var update=function(view,ranges){
 module.exports={clear:clear,update:update,get:get,applyMarkup:applyMarkup,applyLink:applyLink};
 });
 require.register("pncdemo-main/persistent.js", function(exports, require, module){
-var db=new PouchDB("pncdemo");
+var dbname="pncdemo";
 
-var loadMarkups=function(keys,cb,context){  
+//var db=new PouchDB(dbname);
+if (window.location.host.substring(0,9)=="127.0.0.1"){
+    var db=new Pouchdb(dbname);
+} else {
+    var db=new PouchDB('http://114.34.238.149:5984/'+dbname);
+}
+
+
+var loadMarkups=function(keys,cb,context){
+
   db.allDocs({keys:keys,include_docs:true},function(err,response){
     var bulk=[];
     response.rows.map(function(d){
@@ -14792,9 +14910,15 @@ var resetMarkups=function(bulk) {
 }
 
 var saveMarkups=function(markups,cb,context) {
+
 	db.bulkDocs(markups,function(err,response){
 		if (cb) cb.apply(context,[response]);
 	});
+    
+    db.bulkDocs(markups,function(err,response){
+       if (err) console.log(err);
+       else console.log(response);
+    });
 }
 
 module.exports={loadMarkups:loadMarkups,saveMarkups:saveMarkups,resetMarkups:resetMarkups}
@@ -15397,7 +15521,9 @@ module.exports=markuppanel;
 });
 require.register("pncdemo-markuppanel/tagset_default.js", function(exports, require, module){
 var commentFields=[
-	{name:"extra1",defaultValue:"default e1"}
+	{name:"extra1",defaultValue:"default e1"},
+	{name:"attr2 ",defaultValue:"default val"},
+	{name:"attr3 ",defaultValue:"default val2"}
 ];
 module.exports=[
    {caption:"glyphicon-eye-open",tag:null,dialog: Require("markoverview")} //nothing happen
@@ -15416,14 +15542,16 @@ require.register("pncdemo-markuppanel/tagset_news.js", function(exports, require
 module.exports=[
    {caption:"glyphicon-eye-open",tag:null,dialog: Require("markoverview")} //nothing happen
   ,{caption:"Why", tag:"why", dialog: Require("marksimple")  } 
+  ,{caption:"地", tag:"where", dialog: Require("marksimple")  } 
   ,{caption:"What", tag:"what", dialog: Require("marksimple")  } 
-  ,{caption:"Where", tag:"where", dialog: Require("marksimple")  } 
-  ,{caption:"When", tag:"when",dialog:Require("marksimple")}  
+  ,{caption:"時", tag:"when",dialog:Require("marksimple")}  
   ,{caption:"Who", tag:"who",dialog:Require("marksimple")} 
   ,{caption:"How",tag:"how",dialog:Require("marksimple")} 
   ,{caption:"glyphicon-comment", tag:"footnote",dialog:Require("markfootnote")}  //single view dialog markup
   ,{caption:"glyphicon-link",tag:"intertext",dialog:Require("markintertext")} //dual view dialog markup
 ];
+
+//  
 });
 require.register("pncdemo-hovermenu/index.js", function(exports, require, module){
 /** @jsx React.DOM */
@@ -15964,7 +16092,8 @@ require.alias("ksana-document/kdbw.js", "pncdemo/deps/ksana-document/kdbw.js");
 require.alias("ksana-document/kdb_sync.js", "pncdemo/deps/ksana-document/kdb_sync.js");
 require.alias("ksana-document/kdbfs_sync.js", "pncdemo/deps/ksana-document/kdbfs_sync.js");
 require.alias("ksana-document/html5fs.js", "pncdemo/deps/ksana-document/html5fs.js");
-require.alias("ksana-document/kdbfs_ksanagap.js", "pncdemo/deps/ksana-document/kdbfs_ksanagap.js");
+require.alias("ksana-document/kdbfs_android.js", "pncdemo/deps/ksana-document/kdbfs_android.js");
+require.alias("ksana-document/kdbfs_ios.js", "pncdemo/deps/ksana-document/kdbfs_ios.js");
 require.alias("ksana-document/kse.js", "pncdemo/deps/ksana-document/kse.js");
 require.alias("ksana-document/kde.js", "pncdemo/deps/ksana-document/kde.js");
 require.alias("ksana-document/boolsearch.js", "pncdemo/deps/ksana-document/boolsearch.js");

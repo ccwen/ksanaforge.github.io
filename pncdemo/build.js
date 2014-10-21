@@ -207,8 +207,10 @@ require.register("ksanaforge-boot/index.js", function(exports, require, module){
 var ksana={"platform":"remote"};
 
 if (typeof process !="undefined") {
+
 	if (process.versions["node-webkit"]) {
-  	ksana.platform="node-webkit"
+  	ksana.platform="node-webkit";
+  	window.ksanagap={platform:"node-webkit"};
   	if (typeof nodeRequire!="undefined") ksana.require=nodeRequire;
   }
 } else if (typeof chrome!="undefined" && chrome.fileSystem){
@@ -3148,9 +3150,10 @@ var reunit=function(doc,tagname,opts) {
 module.exports={ createDocument: createDocument};
 });
 require.register("ksana-document/api.js", function(exports, require, module){
-if (typeof nodeRequire=='undefined')var nodeRequire=require;
+if (typeof nodeRequire=='undefined') var nodeRequire=(typeof ksana=="undefined")?require:ksana.require;
 var appPath=""; //for servermode
 var getProjectPath=function(p) {
+  debugger;
   var path=nodeRequire('path');
   return path.resolve(p.filename);
 };
@@ -3417,7 +3420,8 @@ var importxml=function(buf,opts) {
 module.exports=importxml;
 });
 require.register("ksana-document/persistent.js", function(exports, require, module){
-if (typeof nodeRequire!="function") nodeRequire=require; 
+if (typeof nodeRequire=='undefined') var nodeRequire=(typeof ksana=="undefined")?require:ksana.require;
+
 var maxFileSize=512*1024;//for github
 var D=require("./document");
 var fs=nodeRequire("fs"); 
@@ -3927,7 +3931,7 @@ k)-899497514);j=k;k=e;e=g<<30|g>>>2;g=h;h=c}b[0]=b[0]+h|0;b[1]=b[1]+g|0;b[2]=b[2
 module.exports=CryptoJS;
 });
 require.register("ksana-document/users.js", function(exports, require, module){
-if (typeof nodeRequire=='undefined')var nodeRequire=require;
+if (typeof nodeRequire=='undefined') var nodeRequire=(typeof ksana=="undefined")?require:ksana.require;
 
 var passwords=[];
 
@@ -4304,7 +4308,6 @@ var putDocument=function(parsed,cb) {
 }
 
 var parseBody=function(body,sep,cb) {
-	debugger;
 	var res=xml4kdb.parseXML(body, {sep:sep,trim:!!session.config.trim});
 	putDocument(res,cb);
 }
@@ -4355,13 +4358,14 @@ var processTags=function(captureTags,tags,texts) {
 		return first+middle+last;
 	}
 	for (var i=0;i<tags.length;i++) {
-
 		for (var j=0;j<tags[i].length;j++) {
 			var T=tags[i][j],tagname=T[1],tagoffset=T[0],attributes=T[2],tagvpos=T[3];	
 			var nulltag=attributes[attributes.length-1]=='/';
 			if (captureTags[tagname]) {
 				var attr=parseAttributesString(attributes);
-				if (!nulltag) tagStack.push([tagname,tagoffset,attr,i]);
+				if (!nulltag) {
+					tagStack.push([tagname,tagoffset,attr,i]);
+				}
 			}
 			var handler=null;
 			if (tagname[0]=="/") handler=captureTags[tagname.substr(1)];
@@ -4369,15 +4373,15 @@ var processTags=function(captureTags,tags,texts) {
 
 			if (handler) {
 				var prev=tagStack[tagStack.length-1];
-				if (!nulltag) {				
-					if (tagname.substr(1)!=prev[0]) {
-						console.error("tag unbalance",tagname,prev[0],T);
+				var text="";
+				if (!nulltag) {
+					if (typeof prev=="undefined" || tagname.substr(1)!=prev[0]) {
+						console.error("tag unbalance",tagname,prev,status.filename);						
+						throw "tag unbalance";
 					} else {
 						tagStack.pop();
+						text=getTextBetween(prev[3],i,prev[1],tagoffset);
 					}
-					var text=getTextBetween(prev[3],i,prev[1],tagoffset);
-				} else {
-					var text="";
 				}
 				
 				status.vpos=tagvpos; 
@@ -4402,6 +4406,11 @@ var resolveTagsVpos=function(parsed) {
 }
 var putFile=function(fn,cb) {
 	var fs=nodeRequire("fs");
+	if (!fs.existsSync(fn)){
+		console.warn("file ",fn,"doens't exist");
+		cb();
+		return;
+	}
 	var texts=fs.readFileSync(fn,session.config.inputEncoding).replace(/\r\n/g,"\n");
 	var bodyend=session.config.bodyend;
 	var bodystart=session.config.bodystart;
@@ -4498,7 +4507,6 @@ var start=function(mkdbconfig) {
 }
 
 var indexstep=function() {
-	
 	if (session.filenow<session.files.length) {
 		status.filename=session.files[session.filenow];
 		status.progress=session.filenow/session.files.length;
@@ -4841,7 +4849,11 @@ require.register("ksana-document/kdb.js", function(exports, require, module){
 var Kfs=null;
 
 if (typeof ksanagap=="undefined") {
-	Kfs=require('./kdbfs');		
+	if (typeof process=="undefined") {
+		Kfs=require('./kdbfs');			
+	} else {
+		Kfs=require('./kdbfs');			
+	}
 } else {
 	if (ksanagap.platform=="ios") {
 		Kfs=require("./kdbfs_ios");
@@ -4889,6 +4901,7 @@ var Create=function(path,opts,cb) {
 	var loadVInt =function(opts,blocksize,count,cb) {
 		//if (count==0) return [];
 		var that=this;
+
 		this.fs.readBuf_packedint(opts.cur,blocksize,count,true,function(o){
 			//console.log("vint");
 			opts.cur+=o.adv;
@@ -5136,6 +5149,7 @@ var Create=function(path,opts,cb) {
 	}
 	var CACHE=null;
 	var KEY={};
+	var ADDRESS={};
 	var reset=function(cb) {
 		if (!CACHE) {
 			load.apply(this,[{cur:0,lazy:true},function(data){
@@ -5170,25 +5184,25 @@ var Create=function(path,opts,cb) {
 		}
 		return o;
 	}
-	var get=function(path,recursive,cb) {
+	var get=function(path,opts,cb) {
 		if (typeof path=='undefined') path=[];
 		if (typeof path=="string") path=[path];
-		if (typeof recursive=='function') {
-			cb=recursive;
-			recursive=false;
-		}
-		recursive=recursive||false;
+		//opts.recursive=!!opts.recursive;
 		var that=this;
 		if (typeof cb!='function') return getSync(path);
 
 		reset.apply(this,[function(){
 			var o=CACHE;
 			if (path.length==0) {
-				cb(Object.keys(CACHE));
+				if (opts.address) {
+					cb([0,that.fs.size]);
+				} else {
+					cb(Object.keys(CACHE));	
+				}
 				return;
 			} 
 			
-			var pathnow="",taskqueue=[],opts={},r=null;
+			var pathnow="",taskqueue=[],newopts={},r=null;
 			var lastkey="";
 
 			for (var i=0;i<path.length;i++) {
@@ -5200,7 +5214,7 @@ var Create=function(path,opts,cb) {
 							o[lastkey]=data; 
 							o=o[lastkey];
 							r=data[key];
-							KEY[pathnow]=opts.keys;
+							KEY[pathnow]=opts.keys;								
 						} else {
 							data=o[key];
 							r=data;
@@ -5215,13 +5229,21 @@ var Create=function(path,opts,cb) {
 							if (typeof r=='string' && r[0]==strsep) { //offset of data to be loaded
 								var p=r.substring(1).split(strsep).map(function(item){return parseInt(item,16)});
 								var cur=p[0],sz=p[1];
-								opts.lazy=!recursive || (k<path.length-1) ;
-								opts.blocksize=sz;opts.cur=cur,opts.keys=[];
+								newopts.lazy=!opts.recursive || (k<path.length-1) ;
+								newopts.blocksize=sz;newopts.cur=cur,newopts.keys=[];
 								lastkey=key; //load is sync in android
-								load.apply(that,[opts, taskqueue.shift()]);
+								if (opts.address && taskqueue.length==1) {
+									ADDRESS[pathnow]=[cur,sz];
+									taskqueue.shift()(null,ADDRESS[pathnow]);
+								} else {
+									load.apply(that,[newopts, taskqueue.shift()]);
+								}
 							} else {
-								var next=taskqueue.shift();
-								next.apply(that,[r]);
+								if (opts.address && taskqueue.length==1) {
+									taskqueue.shift()(null,ADDRESS[pathnow]);
+								} else {
+									taskqueue.shift().apply(that,[r]);
+								}
 							}
 						}
 					})
@@ -5235,10 +5257,14 @@ var Create=function(path,opts,cb) {
 				cb.apply(that,[o]);
 			} else {
 				//last call to child load
-				taskqueue.push(function(data){
-					var key=path[path.length-1];
-					o[key]=data; KEY[pathnow]=opts.keys;
-					cb.apply(that,[data]);
+				taskqueue.push(function(data,cursz){
+					if (opts.address) {
+						cb.apply(that,[cursz]);
+					} else{
+						var key=path[path.length-1];
+						o[key]=data; KEY[pathnow]=opts.keys;
+						cb.apply(that,[data]);
+					}
 				});
 				taskqueue.shift()({__empty:true});			
 			}
@@ -5304,8 +5330,8 @@ if (typeof process=="undefined") {
 	var html5fs=true; 
 } else {
 	if (typeof nodeRequire=="undefined") {
-		if (typeof ksana!="undefined") var nodeRequire=ksana.require;
-		else var nodeRequire=require;
+		if (typeof ksana!="undefined") nodeRequire=ksana.require;
+		else nodeRequire=require;
 	} 
 	var fs=nodeRequire('fs');
 	var Buffer=nodeRequire("buffer").Buffer;
@@ -6551,6 +6577,7 @@ var checkUpdate=function(url,fn,cb) {
 }
 var download=function(url,fn,cb,statuscb,context) {
    var totalsize=0,batches=null,written=0;
+   var fileEntry=0, fileWriter=0;
    var createBatches=function(size) {
       var bytes=1024*1024, out=[];
       var b=Math.floor(size / bytes);
@@ -6561,53 +6588,45 @@ var download=function(url,fn,cb,statuscb,context) {
       out.push(b*bytes+last);
       return out;
    }
-   var finish=function(srcEntry) { //remove old file and rename temp.kdb 
+   var finish=function() { //remove old file and rename temp.kdb 
          rm(fn,function(){
-            srcEntry.moveTo(srcEntry.filesystem.root, fn,function(){
+            fileEntry.moveTo(fileEntry.filesystem.root, fn,function(){
               setTimeout( cb.bind(context,false) , 0) ; 
             },function(e){
               console.log("faile",e)
             });
          },this); 
    }
-   var tempfn="temp.kdb";
+    var tempfn="temp.kdb";
     var batch=function(b) {
+       var abort=false;
        var xhr = new XMLHttpRequest();
        var requesturl=url+"?"+Math.random();
        xhr.open('get', requesturl, true);
        xhr.setRequestHeader('Range', 'bytes='+batches[b]+'-'+(batches[b+1]-1));
        xhr.responseType = 'blob';    
-       var create=(b==0);
        xhr.addEventListener('load', function() {
          var blob=this.response;
-         API.fs.root.getFile(tempfn, {create: create, exclusive: false}, function(fileEntry) {
-            fileEntry.createWriter(function(fileWriter) {
-              fileWriter.seek(fileWriter.length);
-              fileWriter.write(blob);
-              written+=blob.size;
-              fileWriter.onwriteend = function(e) {
-                var abort=false;
-                if (statuscb) {
-                  abort=statuscb.apply(context,[ fileWriter.length / totalsize,totalsize ]);
-                  if (abort) {
-                      setTimeout( cb.bind(context,false) , 0) ;                     
-                  }
-                }
-                b++;
-                if (!abort) {
-                  if (b<batches.length-1) {
-                     setTimeout(batch.bind(this,b),0);
-                  } else {
-                      finish(fileEntry);
-                  }                  
-                }
-              };
-            }, console.error);
-          }, console.error);
+		 fileEntry.createWriter(function(fileWriter) {
+         fileWriter.seek(fileWriter.length);
+         fileWriter.write(blob);
+         written+=blob.size;
+         fileWriter.onwriteend = function(e) {
+           if (statuscb) {
+              abort=statuscb.apply(context,[ fileWriter.length / totalsize,totalsize ]);
+              if (abort) setTimeout( cb.bind(context,false) , 0) ;
+           }
+           b++;
+           if (!abort) {
+              if (b<batches.length-1) setTimeout(batch.bind(context,b),0);
+              else                    finish();
+           }
+         };
+        }, console.error);
        },false);
        xhr.send();
     }
-     //main
+
      getDownloadSize(url,function(size){
        totalsize=size;
        if (!size) {
@@ -6616,7 +6635,11 @@ var download=function(url,fn,cb,statuscb,context) {
         rm(tempfn,function(){
            batches=createBatches(size);
            if (statuscb) statuscb.apply(context,[ 0, totalsize ]);
-           batch(0);          
+           
+       	   API.fs.root.getFile(tempfn, {create: 1, exclusive: false}, function(_fileEntry) {
+       	   	   	fileEntry=_fileEntry;
+           		batch(0);
+       	   });
         },this);
       }
      });
@@ -6640,8 +6663,7 @@ var writeFile=function(filename,buf,cb,context){
       }, console.error);
     }, console.error);
 }
-
-var readdir=function(cb,context) {
+var readEntries=function(cb,context) {
    var dirReader = API.fs.root.createReader();
    var out=[],that=this;
     // Need to recursively read directories until there are no more results.
@@ -6679,15 +6701,18 @@ var rmURL=function(filename,cb,context) {
       if (cb) cb.apply(context,[false]);//no such file
     });
 }
+function errorHandler(e) {
+  console.error('Error: ' +e.name+ " "+e.message);
+}
 var initfs=function(grantedBytes,cb,context) {
-      webkitRequestFileSystem(PERSISTENT, grantedBytes,  function(fs) {
+  webkitRequestFileSystem(PERSISTENT, grantedBytes,  function(fs) {
       API.fs=fs;
       API.quota=grantedBytes;
-      readdir(function(){
+      readEntries(function(){
         API.initialized=true;
         cb.apply(context,[grantedBytes,fs]);
       },context);
-    }, console.error);
+    }, errorHandler);
 }
 var init=function(quota,cb,context) {
   navigator.webkitPersistentStorage.requestQuota(quota, 
@@ -6714,7 +6739,6 @@ var API={
   ,fstatSync:fstatSync
   ,fstat:fstat,close:close
   ,init:init
-  ,readdir:readdir
   ,checkUpdate:checkUpdate
   ,rm:rm
   ,rmURL:rmURL
@@ -6736,76 +6760,82 @@ require.register("ksana-document/kdbfs_android.js", function(exports, require, m
 var verbose=1;
 
 var readSignature=function(pos,cb) {
-	//console.debug("read signature");
+	console.debug("read signature");
 	var signature=kfs.readUTF8String(this.handle,pos,1);
-	//console.debug(signature,signature.charCodeAt(0));
+	console.debug(signature,signature.charCodeAt(0));
 	cb.apply(this,[signature]);
 }
 var readI32=function(pos,cb) {
-	//console.debug("read i32");
+	console.debug("read i32 at "+pos);
 	var i32=kfs.readInt32(this.handle,pos);
-	//console.debug(i32);
+	console.debug(i32);
 	cb.apply(this,[i32]);	
 }
 var readUI32=function(pos,cb) {
-	//console.debug("read ui32");
+	console.debug("read ui32 at "+pos);
 	var ui32=kfs.readUInt32(this.handle,pos);
-	//console.debug(ui32);
+	console.debug(ui32);
 	cb.apply(this,[ui32]);
 }
 var readUI8=function(pos,cb) {
-	//console.debug("read ui8"); 
+	console.debug("read ui8 at "+pos); 
 	var ui8=kfs.readUInt8(this.handle,pos);
-	//console.debug(ui8);
+	console.debug(ui8);
 	cb.apply(this,[ui8]);
 }
 var readBuf=function(pos,blocksize,cb) {
-	//console.debug("read buffer");
+	console.debug("read buffer at "+pos+ " blocksize "+blocksize);
 	var buf=kfs.readBuf(this.handle,pos,blocksize);
 	var buff=JSON.parse(buf);
-	//console.debug("buffer length"+buff.length);
+	console.debug("buffer length"+buff.length);
 	cb.apply(this,[buff]);	
 }
 var readBuf_packedint=function(pos,blocksize,count,reset,cb) {
-	//console.debug("read packed int, blocksize "+blocksize);
+	console.debug("read packed int at "+pos+" blocksize "+blocksize+" count "+count);
 	var buf=kfs.readBuf_packedint(this.handle,pos,blocksize,count,reset);
 	var adv=parseInt(buf);
 	var buff=JSON.parse(buf.substr(buf.indexOf("[")));
-	//console.debug("packedInt length "+buff.length+" first item="+buff[0]);
+	console.debug("packedInt length "+buff.length+" first item="+buff[0]);
 	cb.apply(this,[{data:buff,adv:adv}]);	
 }
 
 
 var readString= function(pos,blocksize,encoding,cb) {
-	//console.debug("readstring"+blocksize+" "+encoding);
+	console.debug("readstring at "+pos+" blocksize " +blocksize+" enc:"+encoding);
 	if (encoding=="ucs2") {
 		var str=kfs.readULE16String(this.handle,pos,blocksize);
 	} else {
 		var str=kfs.readUTF8String(this.handle,pos,blocksize);	
 	}	 
-	//console.debug(str);
+	console.debug(str);
 	cb.apply(this,[str]);	
 }
 
 var readFixedArray = function(pos ,count, unitsize,cb) {
-	//console.debug("read fixed array"); 
+	console.debug("read fixed array at "+pos+" count "+count+" unitsize "+unitsize); 
 	var buf=kfs.readFixedArray(this.handle,pos,count,unitsize);
 	var buff=JSON.parse(buf);
-	//console.debug("array length"+buff.length);
+	console.debug("array length"+buff.length);
 	cb.apply(this,[buff]);	
 }
 var readStringArray = function(pos,blocksize,encoding,cb) {
-	//console.log("read String array "+blocksize +" "+encoding); 
+	console.log("read String array at "+pos+" blocksize "+blocksize +" enc "+encoding); 
 	encoding = encoding||"utf8";
 	var buf=kfs.readStringArray(this.handle,pos,blocksize,encoding);
 	//var buff=JSON.parse(buf);
-	//console.debug("read string array");
+	console.debug("read string array");
 	var buff=buf.split("\uffff"); //cannot return string with 0
-	//console.debug("array length"+buff.length);
+	console.debug("array length"+buff.length);
 	cb.apply(this,[buff]);	
 }
+var mergePostings=function(positions,cb) {
+	var buf=kfs.mergePostings(this.handle,JSON.stringify(positions));
+	if (!buf || buf.length==0) return [];
+	else return JSON.parse(buf);
+}
+
 var free=function() {
-	////console.log('closing ',handle);
+	//console.log('closing ',handle);
 	kfs.close(this.handle);
 }
 var Open=function(path,opts,cb) {
@@ -6822,9 +6852,10 @@ var Open=function(path,opts,cb) {
 		this.readString=readString;
 		this.readStringArray=readStringArray;
 		this.signature_size=signature_size;
+		this.mergePostings=mergePostings;
 		this.free=free;
 		this.size=kfs.getFileSize(this.handle);
-		//console.log("filesize  "+this.size);
+		console.log("filesize  "+this.size);
 		if (cb)	cb.call(this);
 	}
 
@@ -6843,70 +6874,86 @@ require.register("ksana-document/kdbfs_ios.js", function(exports, require, modul
 var verbose=1;
 
 var readSignature=function(pos,cb) {
-	//console.debug("read signature");
+	if (verbose)  ksanagap.log("read signature at "+pos);
 	var signature=kfs.readUTF8String(this.handle,pos,1);
-	//console.debug(signature,signature.charCodeAt(0));
+	if (verbose)  ksanagap.log(signature+" "+signature.charCodeAt(0));
 	cb.apply(this,[signature]);
 }
 var readI32=function(pos,cb) {
-	//console.debug("read i32");
+	if (verbose)  ksanagap.log("read i32 at "+pos);
 	var i32=kfs.readInt32(this.handle,pos);
-	//console.debug(i32);
+	if (verbose)  ksanagap.log(i32);
 	cb.apply(this,[i32]);	
 }
 var readUI32=function(pos,cb) {
-	//console.debug("read ui32");
+	if (verbose)  ksanagap.log("read ui32 at "+pos);
 	var ui32=kfs.readUInt32(this.handle,pos);
-	//console.debug(ui32);
+	if (verbose)  ksanagap.log(ui32);
 	cb.apply(this,[ui32]);
 }
 var readUI8=function(pos,cb) {
-	//console.debug("read ui8"); 
+	if (verbose)  ksanagap.log("read ui8 at "+pos); 
 	var ui8=kfs.readUInt8(this.handle,pos);
-	//console.debug(ui8);
+	if (verbose)  ksanagap.log(ui8);
 	cb.apply(this,[ui8]);
 }
 var readBuf=function(pos,blocksize,cb) {
-	//console.debug("read buffer");
+	if (verbose)  ksanagap.log("read buffer at "+pos);
 	var buf=kfs.readBuf(this.handle,pos,blocksize);
-	//console.debug("buffer length"+buff.length);
+	if (verbose)  ksanagap.log("buffer length"+buf.length);
 	cb.apply(this,[buf]);	
 }
 var readBuf_packedint=function(pos,blocksize,count,reset,cb) {
-	//console.debug("read packed int, blocksize "+blocksize);
+	if (verbose)  ksanagap.log("read packed int fast, blocksize "+blocksize+" at "+pos);var t=new Date();
 	var buf=kfs.readBuf_packedint(this.handle,pos,blocksize,count,reset);
+	if (verbose)  ksanagap.log("return from packedint, time" + (new Date()-t));
+	if (typeof buf.data=="string") {
+		buf.data=eval("["+buf.data.substr(0,buf.data.length-1)+"]");
+	}
+	if (verbose)  ksanagap.log("unpacked length"+buf.data.length+" time" + (new Date()-t) );
 	cb.apply(this,[buf]);
 }
 
 
 var readString= function(pos,blocksize,encoding,cb) {
-	//console.debug("readstring"+blocksize+" "+encoding);
+
+	if (verbose)  ksanagap.log("readstring at "+pos+" blocksize "+blocksize+" "+encoding);var t=new Date();
 	if (encoding=="ucs2") {
 		var str=kfs.readULE16String(this.handle,pos,blocksize);
 	} else {
 		var str=kfs.readUTF8String(this.handle,pos,blocksize);	
 	}
-	//console.debug(str);
+	if (verbose)  ksanagap.log(str+" time"+(new Date()-t));
 	cb.apply(this,[str]);	
 }
 
 var readFixedArray = function(pos ,count, unitsize,cb) {
-	//console.debug("read fixed array"); 
+	if (verbose)  ksanagap.log("read fixed array at "+pos); var t=new Date();
 	var buf=kfs.readFixedArray(this.handle,pos,count,unitsize);
+	if (verbose)  ksanagap.log("array length "+buf.length+" time"+(new Date()-t));
 	cb.apply(this,[buf]);	
 }
 var readStringArray = function(pos,blocksize,encoding,cb) {
-	//console.log("read String array "+blocksize +" "+encoding); 
+	//if (verbose)  ksanagap.log("read String array "+blocksize +" "+encoding); 
 	encoding = encoding||"utf8";
+	if (verbose)  ksanagap.log("read string array at "+pos);var t=new Date();
 	var buf=kfs.readStringArray(this.handle,pos,blocksize,encoding);
+	if (typeof buf=="string") buf=buf.split("\0");
 	//var buff=JSON.parse(buf);
-	//console.debug("read string array");
 	//var buff=buf.split("\uffff"); //cannot return string with 0
-	//console.debug("array length"+buff.length);
-	cb.apply(this,[buf]);	
+	if (verbose)  ksanagap.log("string array length"+buf.length+" time"+(new Date()-t));
+	cb.apply(this,[buf]);
+}
+
+var mergePostings=function(positions) {
+	var buf=kfs.mergePostings(this.handle,positions);
+	if (typeof buf=="string") {
+		buf=eval("["+buf.substr(0,buf.length-1)+"]");
+	}
+	return buf;
 }
 var free=function() {
-	////console.log('closing ',handle);
+	////if (verbose)  ksanagap.log('closing ',handle);
 	kfs.close(this.handle);
 }
 var Open=function(path,opts,cb) {
@@ -6923,9 +6970,10 @@ var Open=function(path,opts,cb) {
 		this.readString=readString;
 		this.readStringArray=readStringArray;
 		this.signature_size=signature_size;
+		this.mergePostings=mergePostings;
 		this.free=free;
 		this.size=kfs.getFileSize(this.handle);
-		//console.log("filesize  "+this.size);
+		if (verbose)  ksanagap.log("filesize  "+this.size);
 		if (cb)	cb.call(this);
 	}
 
@@ -6969,6 +7017,24 @@ var _highlightPage=function(engine,fileid,pageid,opts,cb){
 		api.excerpt.getPage(engine,fileid,pageid,cb);
 	}
 }
+var _highlightRange=function(engine,start,end,opts,cb){
+	if (opts.q) {
+		_search(engine,opts.q,opts,function(Q){
+			api.excerpt.highlightRange(Q,start,end,opts,cb);
+		});
+	} else {
+		api.excerpt.getRange(engine,start,end,cb);
+	}
+}
+var _highlightFile=function(engine,fileid,opts,cb){
+	if (opts.q) {
+		_search(engine,opts.q,opts,function(Q){
+			api.excerpt.highlightFile(Q,fileid,opts,cb);
+		});
+	} else {
+		api.excerpt.getFile(engine,fileid,cb);
+	}
+}
 
 var vpos2filepage=function(engine,vpos) {
     var pageOffsets=engine.get("pageOffsets");
@@ -6978,6 +7044,10 @@ var vpos2filepage=function(engine,vpos) {
     fileid--;
     var pageid=bsearch(pageOffsets,vpos+1,true);
     pageid--;
+    while (pageid&&pageid<pageOffsets.length-1&&
+    	pageOffsets[pageid-1]==pageOffsets[pageid]) {
+    	pageid++;
+    }
 
     var fileOffset=fileOffsets[fileid];
     var pageOffset=bsearch(pageOffsets,fileOffset+1,true);
@@ -6990,6 +7060,8 @@ var api={
 	,concordance:require("./concordance")
 	,regex:require("./regex")
 	,highlightPage:_highlightPage
+	,highlightFile:_highlightFile
+//	,highlightRange:_highlightRange
 	,excerpt:require("./excerpt")
 	,vpos2filepage:vpos2filepage
 }
@@ -7001,44 +7073,44 @@ require.register("ksana-document/kde.js", function(exports, require, module){
    each ydb has one engine instance.
    all data from server will be cache at client side to save network roundtrip.
 */
-if (typeof nodeRequire=='undefined')var nodeRequire=require;
+if (typeof nodeRequire=='undefined') var nodeRequire=(typeof ksana=="undefined")?require:ksana.require;
 var pool={},localPool={};
 var apppath="";
 var bsearch=require("./bsearch");
 var strsep="\uffff";
-var _getSync=function(keys,recursive) {
+var _getSync=function(paths,opts) {
 	var out=[];
-	for (var i in keys) {
-		out.push(this.getSync(keys[i],recursive));	
+	for (var i in paths) {
+		out.push(this.getSync(paths[i],opts));	
 	}
 	return out;
 }
-var _gets=function(keys,recursive,cb) { //get many data with one call
-	if (!keys) return ;
-	if (typeof keys=='string') {
-		keys=[keys];
+var _gets=function(paths,opts,cb) { //get many data with one call
+	if (!paths) return ;
+	if (typeof paths=='string') {
+		paths=[paths];
 	}
 	var engine=this, output=[];
 
-	var makecb=function(key){
+	var makecb=function(path){
 		return function(data){
 				if (!(data && typeof data =='object' && data.__empty)) output.push(data);
-				engine.get(key,recursive,taskqueue.shift());
+				engine.get(path,opts,taskqueue.shift());
 		};
 	};
 
 	var taskqueue=[];
-	for (var i=0;i<keys.length;i++) {
-		if (typeof keys[i]=="null") { //this is only a place holder for key data already in client cache
+	for (var i=0;i<paths.length;i++) {
+		if (typeof paths[i]=="null") { //this is only a place holder for key data already in client cache
 			output.push(null);
 		} else {
-			taskqueue.push(makecb(keys[i]));
+			taskqueue.push(makecb(paths[i]));
 		}
 	};
 
 	taskqueue.push(function(data){
 		output.push(data);
-		cb.apply(engine.context||engine,[output,keys]); //return to caller
+		cb.apply(engine.context||engine,[output,paths]); //return to caller
 	});
 
 	taskqueue.shift()({__empty:true}); //run the task
@@ -7099,6 +7171,32 @@ var getFileRange=function(i) {
 	*/
 	return {start:start,end:end};
 }
+
+var getfp=function(absolutepage) {
+	var fileOffsets=this.get(["fileOffsets"]);
+	var pageOffsets=this.get(["pageOffsets"]);
+	var pageoffset=pageOffsets[absolutepage];
+	var file=bsearch(fileOffsets,pageoffset,true)-1;
+
+	var fileStart=fileOffsets[file];
+	var start=bsearch(pageOffsets,fileStart,true);	
+
+	var page=absolutepage-start-1;
+	return {file:file,page:page};
+}
+//return array of object of nfile npage given pagename
+var findPage=function(pagename) {
+	var pagenames=this.get("pageNames");
+	var out=[];
+	for (var i=0;i<pagenames.length;i++) {
+		if (pagenames[i]==pagename) {
+			var fp=getfp.apply(this,[i]);
+			out.push({file:fp.file,page:fp.page,abspage:i});
+		}
+	}
+
+	return out;
+}
 var getFilePageOffsets=function(i) {
 	var pageOffsets=this.get("pageOffsets");
 	var range=getFileRange.apply(this,[i]);
@@ -7145,25 +7243,25 @@ var createLocalEngine=function(kdb,cb,context) {
 	}	
 
 	if (typeof context=="object") engine.context=context;
-	engine.get=function(key,recursive,cb) {
-		if (typeof recursive=="function") {
-			cb=recursive;
-			recursive=false;
+	engine.get=function(path,opts,cb) {
+		if (typeof opts=="function") {
+			cb=opts;
+			opts={recursive:false};
 		}
-		if (!key) {
+		if (!path) {
 			if (cb) cb(null);
 			return null;
 		}
 		if (typeof cb!="function") {
-			return engine.kdb.get(key,recursive);
+			return engine.kdb.get(path,opts);
 		}
 
-		if (typeof key=="string") {
-			return engine.kdb.get([key],recursive,cb);
-		} else if (typeof key[0] =="string") {
-			return engine.kdb.get(key,recursive,cb);
-		} else if (typeof key[0] =="object") {
-			return _gets.apply(engine,[key,recursive,cb]);
+		if (typeof path=="string") {
+			return engine.kdb.get([path],opts,cb);
+		} else if (typeof path[0] =="string") {
+			return engine.kdb.get(path,opts,cb);
+		} else if (typeof path[0] =="object") {
+			return _gets.apply(engine,[path,opts,cb]);
 		} else {
 			cb(null);	
 		}
@@ -7175,10 +7273,15 @@ var createLocalEngine=function(kdb,cb,context) {
 	engine.getDocument=getDocument;
 	engine.getFilePageNames=getFilePageNames;
 	engine.getFilePageOffsets=getFilePageOffsets;
+	engine.findPage=findPage;
 	//only local engine allow getSync
-	if (kdb.fs.getSync) {
-		engine.getSync=engine.kdb.getSync;
+	if (kdb.fs.getSync) engine.getSync=engine.kdb.getSync;
+	
+	//speedy native functions
+	if (kdb.fs.mergePostings) {
+		engine.mergePostings=kdb.fs.mergePostings.bind(kdb.fs);
 	}
+	
 	var preload=[["meta"],["fileNames"],["fileOffsets"],
 	["tokens"],["postingslen"],["pageNames"],["pageOffsets"]];
 
@@ -7187,71 +7290,73 @@ var createLocalEngine=function(kdb,cb,context) {
 		engine.customfunc=customfunc.getAPI(res[0].config);
 		engine.ready=true;
 	}
+	var opts={recursive:true};
 	if (typeof cb=="function") {
-		_gets.apply(engine,[  preload, true,function(res){
+		_gets.apply(engine,[  preload, opts,function(res){
 			setPreload(res);
 			cb.apply(engine.context,[engine]);
 		}]);
 	} else {
-		setPreload(_getSync.apply(engine,[preload,true]));
+		setPreload(_getSync.apply(engine,[preload,opts]));
 	}
 	return engine;
 }
 
-var getRemote=function(key,recursive,cb) {
+var getRemote=function(path,opts,cb) {
 	var $kse=Require("ksanaforge-kse").$ksana; 
 	var engine=this;
 	if (!engine.ready) {
 		console.error("remote connection not established yet");
 		return;
 	} 
-	if (typeof recursive=="function") {
-		cb=recursive;
-		recursive=false;
+	if (typeof opts=="function") {
+		cb=opts;
+		opts={recursive:false};
 	}
-	recursive=recursive||false;
-	if (typeof key=="string") key=[key];
+	opts.recursive=opts.recursive||false;
+	if (typeof path=="string") path=[path];
 
-	if (key[0] instanceof Array) { //multiple keys
-		var keys=[],output=[];
-		for (var i=0;i<key.length;i++) {
-			var cachekey=key[i].join(strsep);
-			var data=engine.cache[cachekey];
+	if (path[0] instanceof Array) { //multiple paths
+		var paths=[],output=[];
+		for (var i=0;i<path.length;i++) {
+			var cachepath=path[i].join(strsep);
+			var data=engine.cache[cachepath];
 			if (typeof data!="undefined") {
-				keys.push(null);//  place holder for LINE 28
+				paths.push(null);//  place holder for LINE 28
 				output.push(data); //put cached data into output
 			} else{
 				engine.fetched++;
-				keys.push(key[i]); //need to ask server
+				paths.push(path[i]); //need to ask server
 				output.push(null); //data is unknown yet
 			}
 		}
 		//now ask server for unknown datum
 		engine.traffic++;
-		var opts={key:keys,recursive:recursive,db:engine.kdbid};
-		$kse("get",opts).done(function(datum){
+		var newopts={recursive:!!opts.recursive, address:opts.address,
+			key:paths,db:engine.kdbid};
+		$kse("get",newopts).done(function(datum){
 			//merge the server result with cached 
 			for (var i=0;i<output.length;i++) {
-				if (datum[i] && keys[i]) {
-					var cachekey=keys[i].join(strsep);
-					engine.cache[cachekey]=datum[i];
+				if (datum[i] && paths[i]) {
+					var cachekey=paths[i].join(strsep);
+					engine.cache[cachepath]=datum[i];
 					output[i]=datum[i];
 				}
 			}
 			cb.apply(engine.context,[output]);	
 		});
-	} else { //single key
-		var cachekey=key.join(strsep);
-		var data=engine.cache[cachekey];
+	} else { //single path
+		var cachepath=path.join(strsep);
+		var data=engine.cache[cachepath];
 		if (typeof data!="undefined") {
 			if (cb) cb.apply(engine.context,[data]);
 			return data;//in cache , return immediately
 		} else {
 			engine.traffic++;
 			engine.fetched++;
-			var opts={key:key,recursive:recursive,db:engine.kdbid};
+			var opts={key:path,recursive:recursive,db:engine.kdbid};
 			$kse("get",opts).done(function(data){
-				engine.cache[cachekey]=data;
+				engine.cache[cachepath]=data;
 				if (cb) cb.apply(engine.context,[data]);	
 			});
 		}
@@ -7307,6 +7412,7 @@ var createEngine=function(kdbid,context,cb) {
 	engine.getDocument=getDocument;
 	engine.getFilePageNames=getFilePageNames;
 	engine.getFilePageOffsets=getFilePageOffsets;
+	engine.findPage=findPage;
 
 	if (typeof context=="object") engine.context=context;
 
@@ -7466,7 +7572,12 @@ var openLocal=function(kdbid,cb,context)  {
 			openLocalNode(kdbid,cb,context);
 		}		
 	} else {
-		openLocalKsanagap(kdbid,cb,context);
+		if (ksanagap.platform=="node-webkit") {
+			openLocalNode(kdbid,cb,context);
+		} else {
+			openLocalKsanagap(kdbid,cb,context);	
+		}
+		
 	}
 }
 var setPath=function(path) {
@@ -7757,7 +7868,57 @@ var pageWithHit=function(fileid) {
 	var offsets=engine.getFilePageOffsets(fileid);
 	return getPageWithHit.apply(this,[fileid,offsets]);
 }
+var isSimplePhrase=function(phrase) {
+	var m=phrase.match(/[\?%^]/);
+	return !m;
+}
+/* host has fast native function */
+var fastPhrase=function(engine,phrase) {
+	var phrase_term=newPhrase();
+	var tokens=engine.customfunc.tokenize(phrase).tokens;
+	var paths=postingPathFromTokens(engine,tokens);
+	phrase_term.width=tokens.length; //for excerpt.js to getPhraseWidth
+	engine.get(paths,{address:true},function(postingAddress){ //this is sync
+		phrase_term.key=phrase;
+		engine.postingCache[phrase]=engine.mergePostings(postingAddress);
+	});
+	return phrase_term;
+	// put posting into cache[phrase.key]
+}
+var slowPhrase=function(engine,terms,phrase) {
+	  var j=0,tokens=engine.customfunc.tokenize(phrase).tokens;
+	  var phrase_term=newPhrase();
 
+		while (j<tokens.length) {
+			var raw=tokens[j];
+			if (isWildcard(raw)) {
+				if (phrase_term.termid.length==0)  { //skip leading wild card
+					j++
+					continue;
+				}
+				terms.push(parseWildcard(raw));
+			} else if (isOrTerm(raw)){
+				var term=orTerms.apply(this,[tokens,j]);
+				terms.push(term);
+				j+=term.key.split(',').length-1;
+			} else {
+				var term=parseTerm(engine,raw);
+				var termidx=terms.map(function(a){return a.key}).indexOf(term.key);
+				if (termidx==-1) terms.push(term);
+			}
+			phrase_term.termid.push(terms.length-1);
+			j++;
+		}
+		phrase_term.key=phrase;
+		//remove ending wildcard
+		var P=phrase_term , T=null;
+		do {
+			T=terms[P.termid[P.termid.length-1]];
+			if (!T) break;
+			if (T.wildcard) P.termid.pop(); else break;
+		} while(T);		
+		return phrase_term;
+}
 var newQuery =function(engine,query,opts) {
 	if (!query) return;
 	opts=opts||{};
@@ -7768,8 +7929,8 @@ var newQuery =function(engine,query,opts) {
 		phrases=parseQuery(query);
 	}
 	
-	var phrase_terms=[], terms=[],variants=[],termcount=0,operators=[];
-	var pc=0,termid=0;//phrase count
+	var phrase_terms=[], terms=[],variants=[],operators=[];
+	var pc=0;//phrase count
 	for  (var i=0;i<phrases.length;i++) {
 		var op=getOperator(phrases[pc]);
 		if (op) phrases[pc]=phrases[pc].substring(1);
@@ -7777,45 +7938,15 @@ var newQuery =function(engine,query,opts) {
 		/* auto add + for natural order ?*/
 		//if (!opts.rank && op!='exclude' &&i) op='include';
 		operators.push(op);
-		
-		var j=0,tokens=engine.customfunc.tokenize(phrases[pc]).tokens;
-		phrase_terms.push(newPhrase());
-		while (j<tokens.length) {
-			var raw=tokens[j];
-			if (isWildcard(raw)) {
-				if (phrase_terms[pc].termid.length==0)  { //skip leading wild card
-					j++
-					continue;
-				}
-				terms.push(parseWildcard(raw));
-				termid=termcount++;
-			} else if (isOrTerm(raw)){
-				var term=orTerms.apply(this,[tokens,j]);
-				terms.push(term);
-				j+=term.key.split(',').length-1;
-				termid=termcount++;
-			} else {
-				var term=parseTerm(engine,raw);
-				termid=terms.map(function(a){return a.key}).indexOf(term.key);
-				if (termid==-1) {
-					terms.push(term);
-					termid=termcount++;
-				};
-			}
-			phrase_terms[pc].termid.push(termid);
-			j++;
-		}
-		phrase_terms[pc].key=phrases[pc];
 
-		//remove ending wildcard
-		var P=phrase_terms[pc] , T=null;
-		do {
-			T=terms[P.termid[P.termid.length-1]];
-			if (!T) break;
-			if (T.wildcard) P.termid.pop(); else break;
-		} while(T);
-		
-		if (P.termid.length==0) {
+		if (isSimplePhrase(phrases[pc]) && engine.mergePostings ) {
+			var phrase_term=fastPhrase(engine,phrases[pc]);
+		} else {
+			var phrase_term=slowPhrase(engine,terms,phrases[pc]);
+		}
+		phrase_terms.push(phrase_term);
+
+		if (!engine.mergePostings && phrase_terms[pc].termid.length==0) {
 			phrase_terms.pop();
 		} else pc++;
 	}
@@ -7833,17 +7964,28 @@ var newQuery =function(engine,query,opts) {
 	//API.queryid='Q'+(Math.floor(Math.random()*10000000)).toString(16);
 	return Q;
 }
-var loadPostings=function(engine,terms,cb) {
-	var tokens=engine.get("tokens");
+var postingPathFromTokens=function(engine,tokens) {
+	var alltokens=engine.get("tokens");
 	   //var tokenIds=terms.map(function(t){return tokens[t.key]});
-	var tokenIds=terms.map(function(t){ return 1+tokens.indexOf(t.key)});
+	var tokenIds=tokens.map(function(t){ return 1+alltokens.indexOf(t)});
 	var postingid=[];
 	for (var i=0;i<tokenIds.length;i++) {
 		postingid.push( tokenIds[i]); // tokenId==0 , empty token
 	}
-	var postingkeys=postingid.map(function(t){return ["postings",t]});
-	engine.get(postingkeys,function(postings){
-		postings.map(function(p,i) { terms[i].posting=p });
+	return postingid.map(function(t){return ["postings",t]});
+}
+var loadPostings=function(engine,tokens,cb) {
+	tokens=tokens.filter(function(t){
+		return !engine.postingCache[t.key]; //already in cache
+	});
+	if (tokens.length==0) {
+		cb();
+		return;
+	}
+	var postingPaths=postingPathFromTokens(engine,tokens.map(function(t){return t.key}));
+
+	engine.get(postingPaths,function(postings){
+		postings.map(function(p,i) { tokens[i].posting=p });
 		if (cb) cb();
 	});
 }
@@ -8132,7 +8274,7 @@ var sortedIndex = function (array, obj, iterator) { //taken from underscore
 
 var indexOfSorted = function (array, obj) { 
   var low = 0,
-  high = array.length;
+  high = array.length-1;
   while (low < high) {
     var mid = (low + high) >> 1;
     array[mid] < obj ? low = mid + 1 : high = mid;
@@ -8312,17 +8454,16 @@ var unique = function(ar){
 var plphrase = function (postings,ops) {
   var r = [];
   for (var i=0;i<postings.length;i++) {
-	if (!postings[i])
-	  return [];
-	if (0 === i) {
-	  r = postings[0];
-	} else {
-    if (ops[i]=='andnot') {
-      r = plnotfollow(r, postings[i], i);  
-    }else {
-      r = pland(r, postings[i], i);  
-    }
-	}
+  	if (!postings[i])  return [];
+  	if (0 === i) {
+  	  r = postings[0];
+  	} else {
+      if (ops[i]=='andnot') {
+        r = plnotfollow(r, postings[i], i);  
+      }else {
+        r = pland(r, postings[i], i);  
+      }
+  	}
   }
   
   return r;
@@ -8411,6 +8552,7 @@ var getPhraseWidths=function (Q,phraseid,voffs) {
 var getPhraseWidth=function (Q,phraseid,voff) {
 	var P=Q.phrases[phraseid];
 	var width=0,varwidth=false;
+	if (P.width) return P.width; // no wildcard
 	if (P.termid.length<2) return P.termid.length;
 	var lasttermposting=Q.terms[P.termid[P.termid.length-1]].posting;
 
@@ -8534,11 +8676,11 @@ var resultlist=function(engine,Q,opts,cb) {
 		}
 	}
 
-	var pagekeys=output.map(function(p){
+	var pagepaths=output.map(function(p){
 		return ["fileContents",p.file,p.page];
 	});
 	//prepare the text
-	engine.get(pagekeys,function(pages){
+	engine.get(pagepaths,function(pages){
 		var seq=0;
 		if (pages) for (var i=0;i<pages.length;i++) {
 			var startvpos=files[output[i].file].pageOffsets[output[i].page-1];
@@ -8641,14 +8783,55 @@ var highlight=function(Q,opts) {
 
 var getPage=function(engine,fileid,pageid,cb) {
 	var fileOffsets=engine.get("fileOffsets");
-	var pagekeys=["fileContents",fileid,pageid];
+	var pagepaths=["fileContents",fileid,pageid];
 	var pagenames=engine.getFilePageNames(fileid);
 
-	engine.get(pagekeys,function(text){
+	engine.get(pagepaths,function(text){
 		cb.apply(engine.context,[{text:text,file:fileid,page:pageid,pagename:pagenames[pageid]}]);
 	});
 }
 
+var getRange=function(engine,start,end,cb) {
+	var fileOffsets=engine.get("fileOffsets");
+	//var pagepaths=["fileContents",];
+	//find first page and last page
+	//create get paths
+
+}
+
+var getFile=function(engine,fileid,cb) {
+	var filename=engine.get("fileNames")[fileid];
+	var pagenames=engine.getFilePageNames(fileid);
+	var pc=0;
+	engine.get(["fileContents",fileid],true,function(data){
+		var text=data.join("<pb>").replace(/<pb>/g,function(m){
+			return '\n<pb n="'+pagenames[++pc]+'"></pb>'; // skip _
+		})
+		cb({text:text,file:fileid,filename:filename}); //force different token
+	});
+}
+
+var highlightRange=function(Q,startvpos,endvpos,opts,cb){
+	//not implement yet
+}
+
+var highlightFile=function(Q,fileid,opts,cb) {
+	console.log("higlight")
+	if (typeof opts=="function") {
+		cb=opts;
+	}
+	if (!Q || !Q.engine) return cb(null);
+	var fileOffsets=Q.engine.get("fileOffsets");
+	var startvpos=fileOffsets[fileid];
+	var endvpos=fileOffsets[fileid+1];
+	//console.log(startvpos,endvpos)
+	this.getFile(Q.engine,fileid,function(res){
+		//console.log(res.text)
+		var opt={text:res.text,hits:null,tag:'hl',voff:startvpos,fulltext:true};
+		opt.hits=hitInRange(Q,startvpos,endvpos);
+		cb.apply(Q.engine.context,[{text:injectTag(Q,opt),file:fileid,hits:opt.hits}]);
+	})
+}
 var highlightPage=function(Q,fileid,pageid,opts,cb) {
 	if (typeof opts=="function") {
 		cb=opts;
@@ -8670,7 +8853,12 @@ var highlightPage=function(Q,fileid,pageid,opts,cb) {
 module.exports={resultlist:resultlist, 
 	hitInRange:hitInRange, 
 	highlightPage:highlightPage,
-	getPage:getPage};
+	getPage:getPage,
+	highlightFile:highlightFile,
+	getFile:getFile
+	//highlightRange:highlightRange,
+  //getRange:getRange,
+};
 });
 require.register("ksana-document/link.js", function(exports, require, module){
 var findLinkBy=function(page,start,len,cb) {
@@ -12927,43 +13115,57 @@ var movefile=function(sourcefn,targetfolder) {
 	return targetfn;
 }
 var mkdbjs="mkdb.js";
+var starttime=0;
+var startindexer=function(mkdbconfig) {
+  var indexer=require("ksana-document").indexer;
+  var session=indexer.start(mkdbconfig);
+  if (!session) {
+      console.log("No file to index");
+      return;
+  }
+  var getstatus=function() {
+    var status=indexer.status();
+    outback((Math.floor(status.progress*1000)/10)+'%'+status.message);
+    if (status.done) {
+      var endtime=new Date();
+      console.log("END",endtime, "elapse",(endtime-starttime) /1000,"seconds") ;
+      //status.outputfn=movefile(status.outputfn,"..");
+      clearInterval(timer);
+    }
+  }  
+  timer=setInterval( getstatus, 1000);
+
+}
+
 var build=function(path){
   var fs=require("fs");
 
   if (!fs.existsSync(mkdbjs)) {
       throw "no "+mkdbjs  ;
   }
-  var starttime=new Date();
+  starttime=new Date();
   console.log("START",starttime);
   if (!path) path=".";
-  var fn=require("path").resolve(path,mkdbjs);
-  var mkdbconfig=require(fn);
+  
   var glob = require("glob");
-  var indexer=require("ksana-document").indexer;
+  
   var timer=null;
-
-  glob(mkdbconfig.glob, function (err, files) {
-    if (err) {
-      throw err;
-    }
-    mkdbconfig.files=files.sort();
-    var session=indexer.start(mkdbconfig);
-    if (!session) {
-      console.log("No file to index");
-      return;
-    }
-    timer=setInterval( getstatus, 1000);
-  });
-  var getstatus=function() {
-    var status=indexer.status();
-    outback((Math.floor(status.progress*1000)/10)+'%'+status.message);
-    if (status.done) {
-    	var endtime=new Date();
-    	console.log("END",endtime, "elapse",(endtime-starttime) /1000,"seconds") ;
-      //status.outputfn=movefile(status.outputfn,"..");
-      clearInterval(timer);
-    }
+  var fn=require("path").resolve(path,mkdbjs);  
+  var mkdbconfig=require(fn);
+  
+  if (typeof mkdbconfig.glob=="string") {
+    glob(mkdbconfig.glob, function (err, files) {
+      if (err) throw err;
+      mkdbconfig.files=files.sort();
+      startindexer(mkdbconfig);
+    });    
+  } else {
+    mkdbconfig.files=mkdbconfig.glob;
+    startindexer(mkdbconfig);
   }
+
+
+
 }
 
 module.exports=build;
@@ -12987,35 +13189,45 @@ var ontext=function(e) {
 	context.text+=e;
 }
 var onopentag=function(e) {
-	context.paths.push(e.name);
+	if (context.parents.length) {
+		context.paths.push(e.name);
+	}
 	context.parents.push(e);
 	context.now=e;	
 	context.path=context.paths.join("/");
 	if (!context.handler) {
 		var handler=context.handlers[context.path];
-		if (handler) 	context.handler=handler;
+		if (handler) {
+			context.handler=handler;
+			context.rootpath=context.path;
+		}
 		var close_handler=context.close_handlers[context.path];
 		if (close_handler) 	context.close_handler=close_handler;
 	}
 
-	if (context.handler)  context.handler(true);
+	if (context.handler) {
+		var root=context.path==context.rootpath;
+		context.handler(root);
+	} 
 }
 
 var onclosetag=function(e) {
 	context.now=context.parents[context.parents.length-1];
-
 	var handler=context.close_handlers[context.path];
 	if (handler) {
 		var res=null;
-		if (context.close_handler) res=context.close_handler(true);
+		var root=context.path==context.rootpath;
+		if (context.close_handler) res=context.close_handler(root);
 		context.handler=null;//stop handling
+		context.rootpath=null;
 		context.close_handler=null;//stop handling
 		context.text="";
 		if (res && context.status.storeFields) {
 			context.status.storeFields(res, context.status.json);
 		}
 	} else if (context.close_handler) {
-		context.close_handler();
+		var root=context.path==context.rootpath;
+		context.close_handler(root);
 	}
 	
 	context.paths.pop();
@@ -13103,7 +13315,11 @@ var parseP5=function(xml,parsed,fn,_config,_status) {
 	tagmodules=[];
 	context.addHandler=addHandler;
 	if (_config.setupHandlers) config.setupHandlers.apply(context);
+	if (config.callbacks && config.callbacks.beforeParseTag) {
+		xml=config.callbacks.beforeParseTag(xml);
+	}
 	parser.write(xml);
+	debugger;
 	context=null;
 	parser=null;
 	if (parsed) return createMarkups(parsed);
@@ -13988,15 +14204,21 @@ module.exports=filemanager;
 require.register("ksanaforge-checkbrowser/index.js", function(exports, require, module){
 /** @jsx React.DOM */
 
+var hasksanagap=(typeof ksanagap!="undefined");
+if (hasksanagap && (typeof console=="undefined" || typeof console.log=="undefined")) {
+		window.console={log:ksanagap.log,error:ksanagap.error,debug:ksanagap.debug,warn:ksanagap.warn};
+		console.log("install console output funciton");
+}
+
 var checkfs=function() {
-	return (navigator && navigator.webkitPersistentStorage) || 
-	(typeof ksanagap!="undefined");
+	return (navigator && navigator.webkitPersistentStorage) || hasksanagap;
 }
 var featurechecks={
 	"fs":checkfs
 }
 var checkbrowser = React.createClass({displayName: 'checkbrowser',
 	getInitialState:function() {
+
 		var missingFeatures=this.getMissingFeatures();
 		return {ready:false, missing:missingFeatures};
 	},
